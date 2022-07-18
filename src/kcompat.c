@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2021 Intel Corporation. */
+/* Copyright(c) 2013 - 2022 Intel Corporation. */
 
 #include "i40e.h"
 #include "kcompat.h"
@@ -1048,7 +1048,7 @@ out:
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29) )
-static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
+static void __kc_pci_set_main(struct pci_dev *pdev, bool enable)
 {
 	u16 old_cmd, cmd;
 
@@ -1058,7 +1058,7 @@ static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
 	else
 		cmd = old_cmd & ~PCI_COMMAND_MASTER;
 	if (cmd != old_cmd) {
-		dev_dbg(pci_dev_to_dev(pdev), "%s bus mastering\n",
+		dev_dbg(pci_dev_to_dev(pdev), "%s bus DMA control\n",
 			enable ? "enabling" : "disabling");
 		pci_write_config_word(pdev, PCI_COMMAND, cmd);
 	}
@@ -1067,9 +1067,9 @@ static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
 #endif
 }
 
-void _kc_pci_clear_master(struct pci_dev *dev)
+void _kc_pci_clear_main(struct pci_dev *dev)
 {
-	__kc_pci_set_master(dev, false);
+	__kc_pci_set_main(dev, false);
 }
 #endif /* < 2.6.29 */
 
@@ -2561,6 +2561,47 @@ int _kc_eth_platform_get_mac_address(struct device *dev __maybe_unused,
 #endif /* < 4.5.0 */
 
 /*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0))
+int _kc_kstrtobool(const char *s, bool *res)
+{
+	if (!s)
+		return -EINVAL;
+
+	switch (s[0]) {
+	case 'y':
+	case 'Y':
+	case '1':
+		*res = true;
+		return 0;
+	case 'n':
+	case 'N':
+	case '0':
+		*res = false;
+		return 0;
+	case 'o':
+	case 'O':
+		switch (s[1]) {
+		case 'n':
+		case 'N':
+			*res = true;
+			return 0;
+		case 'f':
+		case 'F':
+			*res = false;
+			return 0;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return -EINVAL;
+}
+#endif /* < 4.6.0 */
+
+/*****************************************************************************/
 #if ((LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0)) || \
      (SLE_VERSION_CODE && (SLE_VERSION_CODE <= SLE_VERSION(12,3,0))) || \
      (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(7,5))))
@@ -2952,3 +2993,11 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev)
 	return dsn;
 }
 #endif /* 5.7.0 */
+
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,17,0))
+void _kc_eth_hw_addr_set(struct net_device *dev, const void *addr)
+{
+	ether_addr_copy(dev->dev_addr, addr);
+}
+#endif /* 5.17.0 */

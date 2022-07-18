@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2021 Intel Corporation. */
+/* Copyright(c) 2013 - 2022 Intel Corporation. */
 
 #ifndef _I40E_TYPE_H_
 #define _I40E_TYPE_H_
@@ -1285,6 +1285,7 @@ struct i40e_eth_stats {
 	u64 tx_broadcast;		/* bptc */
 	u64 tx_discards;		/* tdpc */
 	u64 tx_errors;			/* tepc */
+	u64 rx_discards_other;		/* rxerr1 */
 };
 
 /* Statistics collected per VEB per TC */
@@ -1545,6 +1546,10 @@ struct i40e_lldp_variables {
 #define I40E_PFQF_CTL_0_HASHLUTSIZE_512	0x00010000
 
 /* INPUT SET MASK for RSS, flow director, and flexible payload */
+#define I40E_X722_L3_SRC_SHIFT		49
+#define I40E_X722_L3_SRC_MASK		(0x3ULL << I40E_X722_L3_SRC_SHIFT)
+#define I40E_X722_L3_DST_SHIFT		41
+#define I40E_X722_L3_DST_MASK		(0x3ULL << I40E_X722_L3_DST_SHIFT)
 #define I40E_L3_SRC_SHIFT		47
 #define I40E_L3_SRC_MASK		(0x3ULL << I40E_L3_SRC_SHIFT)
 #define I40E_L3_V6_SRC_SHIFT		43
@@ -1615,6 +1620,8 @@ struct i40e_metadata_segment {
 #define I40E_DDP_TRACKID_INVALID	0xFFFFFFFF
 #define I40E_DDP_TRACKID_GRP_MSK	0x00FF0000
 #define I40E_DDP_TRACKID_GRP_COMP_ALL	0xFF
+#define I40E_DDP_TRACKID_PKGTYPE_MSK	0xFF000000
+#define I40E_DDP_TRACKID_PKGTYPE_RDONLY	0
 	u32 track_id;
 	char name[I40E_DDP_NAME_SIZE];
 };

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2021 Intel Corporation. */
+/* Copyright(c) 2013 - 2022 Intel Corporation. */
 
 /* ethtool support for i40e */
 
 #include "i40e.h"
 #include "i40e_diag.h"
+#include "i40e_txrx_common.h"
 
 #ifdef SIOCETHTOOL
 #ifndef ETH_GSTRING_LEN
@@ -152,6 +153,7 @@ static const struct i40e_stats i40e_gstrings_stats[] = {
 	I40E_PF_STAT("port.fdir_sb_status", stats.fd_sb_status),
 #ifdef I40E_ADD_PROBES
 	I40E_PF_STAT("port.tx_tcp_segments", tcp_segs),
+	I40E_PF_STAT("port.tx_udp_segments", udp_segs),
 	I40E_PF_STAT("port.tx_tcp_cso", tx_tcp_cso),
 	I40E_PF_STAT("port.tx_udp_cso", tx_udp_cso),
 	I40E_PF_STAT("port.tx_sctp_cso", tx_sctp_cso),
@@ -313,8 +315,8 @@ static const struct i40e_priv_flags i40e_gstrings_priv_flags[] = {
 	I40E_PRIV_FLAG("base-r-fec", I40E_FLAG_BASE_R_FEC, 0),
 	I40E_PRIV_FLAG("multiple-traffic-classes",
 		       I40E_FLAG_MULTIPLE_TRAFFIC_CLASSES, 0),
-	I40E_PRIV_FLAG("vf-vlan-prune-disable",
-		       I40E_FLAG_VF_VLAN_PRUNE_DISABLE, 0),
+	I40E_PRIV_FLAG("vf-vlan-pruning",
+		       I40E_FLAG_VF_VLAN_PRUNING, 0),
 };
 
 #define I40E_PRIV_FLAGS_STR_LEN ARRAY_SIZE(i40e_gstrings_priv_flags)
@@ -2239,8 +2241,16 @@ static void i40e_get_drvinfo(struct net_device *netdev,
 #endif
 }
 
+#ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+static void
+i40e_get_ringparam(struct net_device *netdev,
+		   struct ethtool_ringparam *ring,
+		   struct kernel_ethtool_ringparam __always_unused *ker,
+		   struct netlink_ext_ack __always_unused *extack)
+#else
 static void i40e_get_ringparam(struct net_device *netdev,
 			       struct ethtool_ringparam *ring)
+#endif /* HAVE_ETHTOOL_EXTENDED_RINGPARAMS */
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_pf *pf = np->vsi->back;
@@ -2267,8 +2277,16 @@ static bool i40e_active_tx_ring_index(struct i40e_vsi *vsi, u16 index)
 	return index < vsi->num_queue_pairs;
 }
 
+#ifdef HAVE_ETHTOOL_EXTENDED_RINGPARAMS
+static int
+i40e_set_ringparam(struct net_device *netdev,
+		   struct ethtool_ringparam *ring,
+		   struct kernel_ethtool_ringparam __always_unused *ker,
+		   struct netlink_ext_ack __always_unused *extack)
+#else
 static int i40e_set_ringparam(struct net_device *netdev,
 			      struct ethtool_ringparam *ring)
+#endif /* HAVE_ETHTOOL_EXTENDED_RINGPARAMS */
 {
 	struct i40e_ring *tx_rings = NULL, *rx_rings = NULL;
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
@@ -2301,6 +2319,15 @@ static int i40e_set_ringparam(struct net_device *netdev,
 	if ((new_tx_count == vsi->tx_rings[0]->count) &&
 	    (new_rx_count == vsi->rx_rings[0]->count))
 		return 0;
+
+	/* If there is a AF_XDP page pool attached to any of Rx rings,
+	 * disallow changing the number of descriptors -- regardless
+	 * if the netdev is running or not.
+	 */
+#ifdef HAVE_AF_XDP_ZC_SUPPORT
+	if (i40e_xsk_any_rx_ring_enabled(vsi))
+		return -EBUSY;
+#endif /* HAVE_AF_XDP_ZC_SUPPORT */
 
 	while (test_and_set_bit(__I40E_CONFIG_BUSY, pf->state)) {
 		timeout--;
@@ -3170,6 +3197,7 @@ static int i40e_set_phys_id(struct net_device *netdev,
 	case ETHTOOL_ID_ACTIVE:
 		if (!(pf->hw_features & I40E_HW_PHY_CONTROLS_LEDS)) {
 			pf->led_status = i40e_led_get(hw);
+			pf->led_status_blink = i40e_led_get_blink(hw);
 		} else {
 			if (!(hw->flags & I40E_HW_FLAG_AQ_PHY_ACCESS_CAPABLE))
 				i40e_aq_set_phy_debug(hw, I40E_PHY_DEBUG_ALL,
@@ -3193,7 +3221,7 @@ static int i40e_set_phys_id(struct net_device *netdev,
 		break;
 	case ETHTOOL_ID_INACTIVE:
 		if (!(pf->hw_features & I40E_HW_PHY_CONTROLS_LEDS)) {
-			i40e_led_set(hw, pf->led_status, false);
+			i40e_led_set(hw, pf->led_status, pf->led_status_blink);
 		} else {
 			ret = i40e_led_set_phy(hw, false, pf->led_status,
 					       (pf->phy_led_val |
@@ -3320,13 +3348,21 @@ static int __i40e_get_coalesce(struct net_device *netdev,
  * i40e_get_coalesce - get a netdev's coalesce settings
  * @netdev: the netdev to check
  * @ec: ethtool coalesce data structure
+ * @kec: kernel coalesce parameter
+ * @extack: kernel extack parameter
  *
  * Gets the coalesce settings for a particular netdev. Note that if user has
  * modified per-queue settings, this only guarantees to represent queue 0. See
  * __i40e_get_coalesce for more details.
  **/
+#ifdef HAVE_ETHTOOL_COALESCE_EXTACK
+static int i40e_get_coalesce(struct net_device *netdev, struct ethtool_coalesce *ec,
+		  struct kernel_ethtool_coalesce __maybe_unused *kec,
+		  struct netlink_ext_ack __maybe_unused *extack)
+#else
 static int i40e_get_coalesce(struct net_device *netdev,
 			     struct ethtool_coalesce *ec)
+#endif /* HAVE_ETHTOOL_COALESCE_EXTACK */
 {
 	return __i40e_get_coalesce(netdev, ec, -1);
 }
@@ -3545,11 +3581,19 @@ static int __i40e_set_coalesce(struct net_device *netdev,
  * i40e_set_coalesce - set coalesce settings for every queue on the netdev
  * @netdev: the netdev to change
  * @ec: ethtool coalesce settings
+ * @kec: kernel coalesce parameter
+ * @extack: kernel extack parameter
  *
  * This will set each queue to the same coalesce settings.
  **/
+#ifdef HAVE_ETHTOOL_COALESCE_EXTACK
+static int i40e_set_coalesce(struct net_device *netdev, struct ethtool_coalesce *ec,
+		  struct kernel_ethtool_coalesce __maybe_unused *kec,
+		  struct netlink_ext_ack __maybe_unused *extack)
+#else
 static int i40e_set_coalesce(struct net_device *netdev,
 			     struct ethtool_coalesce *ec)
+#endif /* HAVE_ETHTOOL_COALESCE_EXTACK */
 {
 	return __i40e_set_coalesce(netdev, ec, -1);
 }
@@ -5544,7 +5588,7 @@ static int i40e_check_fdir_input_set(struct i40e_vsi *vsi,
 	switch (fsp->flow_type & ~FLOW_EXT) {
 	case SCTP_V4_FLOW:
 		new_mask &= ~I40E_VERIFY_TAG_MASK;
-		/* Fall through */
+		fallthrough;
 	case TCP_V4_FLOW:
 	case UDP_V4_FLOW:
 		tcp_ip4_spec = &fsp->m_u.tcp_ip4_spec;
@@ -5588,7 +5632,7 @@ static int i40e_check_fdir_input_set(struct i40e_vsi *vsi,
 		break;
 	case SCTP_V6_FLOW:
 		new_mask &= ~I40E_VERIFY_TAG_MASK;
-		/* Fall through */
+		fallthrough;
 	case TCP_V6_FLOW:
 	case UDP_V6_FLOW:
 #ifdef HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
@@ -6004,14 +6048,8 @@ static int i40e_add_fdir_ethtool(struct i40e_vsi *vsi,
 	if (!(pf->flags & I40E_FLAG_FD_SB_ENABLED))
 		return -EOPNOTSUPP;
 
-	if (test_bit(__I40E_FD_SB_AUTO_DISABLED, pf->state))
-		return -ENOSPC;
-
 	if (test_bit(__I40E_RESET_RECOVERY_PENDING, pf->state) ||
 	    test_bit(__I40E_RESET_INTR_RECEIVED, pf->state))
-		return -EBUSY;
-
-	if (test_bit(__I40E_FD_FLUSH_REQUESTED, pf->state))
 		return -EBUSY;
 
 	fsp = (struct ethtool_rx_flow_spec *)&cmd->fs;
@@ -6023,6 +6061,12 @@ static int i40e_add_fdir_ethtool(struct i40e_vsi *vsi,
 
 	if (userdef.cloud_filter)
 		return i40e_add_cloud_filter_ethtool(vsi, cmd, &userdef);
+
+	if (test_bit(__I40E_FD_SB_AUTO_DISABLED, pf->state))
+		return -ENOSPC;
+
+	if (test_bit(__I40E_FD_FLUSH_REQUESTED, pf->state))
+		return -EBUSY;
 
 	/* Extended MAC field is not supported */
 	if (fsp->flow_type & FLOW_MAC_EXT)
@@ -6252,7 +6296,7 @@ static int i40e_set_channels(struct net_device *dev,
 	/* We do not support setting channels via ethtool when TCs are
 	 * configured through mqprio
 	 */
-	if (pf->flags & I40E_FLAG_TC_MQPRIO)
+	if (i40e_is_tc_mqprio_enabled(pf))
 		return -EINVAL;
 
 	/* verify they are not requesting separate vectors */
@@ -6659,12 +6703,21 @@ flags_complete:
 		return -EINVAL;
 	}
 
-	if ((changed_flags & I40E_FLAG_VF_VLAN_PRUNE_DISABLE) &&
+	if ((changed_flags & I40E_FLAG_VF_VLAN_PRUNING) &&
 	    pf->num_alloc_vfs) {
-		dev_warn(&pf->pdev->dev,
-			 "Changing vf-vlan-prune-disable flag while VF(s) are active is not supported");
+		dev_err(&pf->pdev->dev,
+			"vf-vlan-pruning: VLAN pruning cannot be changed while VFs are active.\n");
 		return -EOPNOTSUPP;
 	}
+
+#ifdef __TC_MQPRIO_MODE_MAX
+	if ((changed_flags & I40E_FLAG_DISABLE_FW_LLDP) &&
+	    (orig_flags & I40E_FLAG_TC_MQPRIO)) {
+		dev_err(&pf->pdev->dev,
+			"disable-fw-lldp: FW LLDP cannot be changed while ADQ is configured.\n");
+		return -EOPNOTSUPP;
+	}
+#endif
 
 	if ((changed_flags & I40E_FLAG_DISABLE_FW_LLDP) ||
 	    (changed_flags & I40E_FLAG_MULTIPLE_TRAFFIC_CLASSES)) {
