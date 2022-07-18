@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-# Copyright(c) 2013 - 2021 Intel Corporation.
+# Copyright(c) 2013 - 2022 Intel Corporation.
 
 # updates for the system pci.ids file
 #
@@ -11,6 +11,16 @@
 #             the string is consumed by the tools using it.
 #
 8086  Intel Corporation
+	0dd2  Ethernet Network Adapter I710
+		1137 0000  I710T4LG 4x1 GbE RJ45 PCIe NIC
+		1137 02e3  I710T4LG 4x1 GbE RJ45 PCIe NIC
+		8086 0000  Ethernet Network Adapter I710-T4L
+		8086 000d  Ethernet Network Adapter I710-T4L
+		8086 0010  Ethernet Network Adapter I710-T4L for OCP 3.0
+		8086 401a  Ethernet Network Adapter I710-T4L
+		8086 401b  Ethernet Network Adapter I710-T4L for OCP 3.0
+	0dda  Ethernet Connection X722 for 10GbE SFP+
+		1bd4 0076  Ethernet Connection F102IX722 for 10GbE SFP
 	1572  Ethernet Controller X710 for 10GbE SFP+
 		1028 0000  Ethernet 10G X710 rNDC
 		1028 1f99  Ethernet 10G 4P X710/I350 rNDC
@@ -122,6 +132,10 @@
 		8086 000b  Ethernet Network Adapter X710-T2L for OCP 3.0
 		8086 000c  Ethernet Network Adapter X710-T2L for OCP 3.0
 		8086 000f  Ethernet Network Adapter X710-T2L for OCP 3.0
+		8086 4009  Ethernet Network Adapter X710-T2L
+		8086 4012  Ethernet Network Adapter X710-T4L for OCP 3.0
+		8086 4018  Ethernet Network Adapter X710-T2L for OCP 3.0
+		8086 4019  Ethernet Network Adapter X710-T4L
 	37ce  Ethernet Connection X722 for 10GbE backplane
 		1590 0215  Ethernet 10Gb 2-port 568i Adapter
 		17aa 4023  Ethernet Connection X722 for 10GbE backplane
