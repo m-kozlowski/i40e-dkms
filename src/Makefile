@@ -6,6 +6,9 @@ ifneq ($(KERNELRELEASE),)
 #
 # Makefile for the Intel(R) 40-10 Gigabit Ethernet Connection Network Driver
 #
+# HvB and JaDI
+#
+NEED_AUX_BUS = 2
 
 ccflags-y += -I$(src)
 subdir-ccflags-y += -I$(src)
