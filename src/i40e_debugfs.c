@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifdef CONFIG_DEBUG_FS
 
@@ -64,6 +64,7 @@ static ssize_t i40e_dbg_command_read(struct file *filp, char __user *buffer,
 				     size_t count, loff_t *ppos)
 {
 	struct i40e_pf *pf = filp->private_data;
+	struct i40e_vsi *main_vsi;
 	int bytes_not_copied;
 	size_t buf_size = 256;
 	char *buf;
@@ -79,8 +80,8 @@ static ssize_t i40e_dbg_command_read(struct file *filp, char __user *buffer,
 	if (!buf)
 		return -ENOSPC;
 
-	len = snprintf(buf, buf_size, "%s: %s\n",
-		       pf->vsi[pf->lan_vsi]->netdev->name,
+	main_vsi = i40e_pf_get_main_vsi(pf);
+	len = snprintf(buf, buf_size, "%s: %s\n", main_vsi->netdev->name,
 		       i40e_dbg_command_buf);
 
 	bytes_not_copied = copy_to_user(buffer, buf, len);
@@ -93,7 +94,7 @@ static ssize_t i40e_dbg_command_read(struct file *filp, char __user *buffer,
 	return len;
 }
 
-static char *i40e_filter_state_string[] = {
+static const char *i40e_filter_state_string[] = {
 	"INVALID",
 	"NEW",
 	"ACTIVE",
@@ -200,7 +201,7 @@ static void i40e_dbg_dump_vsi_seid(struct i40e_pf *pf, int seid)
 		dev_info(&pf->pdev->dev,
 			 "    state[%d] = %08lx\n",
 			 i, vsi->state[i]);
-	if (vsi == pf->vsi[pf->lan_vsi])
+	if (vsi->type == I40E_VSI_MAIN)
 		dev_info(&pf->pdev->dev, "    MAC address: %pM SAN MAC: %pM Port MAC: %pM\n",
 			 pf->hw.mac.addr,
 			 pf->hw.mac.san_addr,
@@ -357,10 +358,11 @@ static void i40e_dbg_dump_vsi_seid(struct i40e_pf *pf, int seid)
 			 tx_ring->stats.bytes,
 			 tx_ring->tx_stats.restart_queue);
 		dev_info(&pf->pdev->dev,
-			 "    tx_rings[%i]: tx_stats: tx_busy = %lld, tx_done_old = %lld\n",
+			 "    tx_rings[%i]: tx_stats: tx_busy = %lld, tx_done_old = %lld, tx_stopped = %lld\n",
 			 i,
 			 tx_ring->tx_stats.tx_busy,
-			 tx_ring->tx_stats.tx_done_old);
+			 tx_ring->tx_stats.tx_done_old,
+			 tx_ring->tx_stats.tx_stopped);
 		dev_info(&pf->pdev->dev,
 			 "    tx_rings[%i]: size = %i\n",
 			 i, tx_ring->size);
@@ -687,7 +689,7 @@ static void i40e_dbg_dump_resources(struct i40e_pf *pf)
 	dev_info(&pf->pdev->dev, "  resources:\n");
 	dev_info(&pf->pdev->dev, "  guar  total  used unalloc   name\n");
 	for (i = 0; i < num_entries; i++) {
-		char *p;
+		const char *p;
 
 		switch (buf[i].resource_type) {
 		case I40E_AQ_RESOURCE_TYPE_VEB:
@@ -908,7 +910,7 @@ static void i40e_dbg_dump_vf(struct i40e_pf *pf, int vf_id)
 		dev_info(&pf->pdev->dev, "vf %2d: VSI id=%d, seid=%d, qps=%d\n",
 			 vf_id, vf->lan_vsi_id, vsi->seid, vf->num_queue_pairs);
 		dev_info(&pf->pdev->dev, "       num MDD=%lld",
-			 vf->num_mdd_events);
+			 vf->mdd_tx_events.count + vf->mdd_rx_events.count);
 	} else {
 		dev_info(&pf->pdev->dev, "invalid VF id %d\n", vf_id);
 	}
@@ -937,7 +939,7 @@ static void i40e_dbg_dump_vf_all(struct i40e_pf *pf)
  **/
 static void i40e_dbg_dump_dcb_cfg(struct i40e_pf *pf,
 				  struct i40e_dcbx_config *cfg,
-				  char *prefix)
+				  const char *prefix)
 {
 	int i;
 
@@ -1114,7 +1116,8 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 		cnt = sscanf(&cmd_buf[7], "%i", &vsi_seid);
 		if (cnt == 0) {
 			/* default to PF VSI */
-			vsi_seid = pf->vsi[pf->lan_vsi]->seid;
+			vsi = i40e_pf_get_main_vsi(pf);
+			vsi_seid = vsi->seid;
 		} else if (vsi_seid < 0) {
 			dev_info(&pf->pdev->dev, "add VSI %d: bad vsi seid\n",
 				 vsi_seid);
@@ -1189,7 +1192,7 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 			goto command_write_done;
 		}
 
-		veb = i40e_veb_setup(pf, 0, uplink_seid, vsi_seid,
+		veb = i40e_veb_setup(pf, uplink_seid, vsi_seid,
 				     vsi->tc_config.enabled_tc);
 		if (veb)
 			dev_info(&pf->pdev->dev, "added relay %d\n", veb->seid);
@@ -1353,7 +1356,7 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 				goto command_write_done;
 			}
 
-			vsi = pf->vsi[pf->lan_vsi];
+			vsi = i40e_pf_get_main_vsi(pf);
 			switch_id =
 				le16_to_cpu(vsi->info.switch_id) &
 					    I40E_AQ_VSI_SW_ID_MASK;
@@ -1607,7 +1610,7 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 			goto command_write_done;
 		}
 		/* Just stub a buffer big enough in case user messed up */
-		if (buffer_len == 0)
+		if (buffer_len == 0 || buffer_len > 1280)
 			buffer_len = 1280;
 
 		buff = kzalloc(buffer_len, GFP_KERNEL);
@@ -1715,6 +1718,9 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 		}
 		pf->flags |= I40E_FLAG_DCB_ENABLED;
 	} else if (strncmp(cmd_buf, "lldp", 4) == 0) {
+		/* Get main VSI */
+		struct i40e_vsi *main_vsi = i40e_pf_get_main_vsi(pf);
+
 		if (strncmp(&cmd_buf[5], "stop", 4) == 0) {
 			int ret;
 
@@ -1732,10 +1738,9 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 				goto command_write_done;
 			}
 			ret = i40e_aq_add_rem_control_packet_filter(&pf->hw,
-						pf->hw.mac.addr,
-						I40E_ETH_P_LLDP, 0,
-						pf->vsi[pf->lan_vsi]->seid,
-						0, true, NULL, NULL);
+						pf->hw.mac.addr, I40E_ETH_P_LLDP, 0,
+						main_vsi->seid, 0, true, NULL,
+						NULL);
 			if (ret) {
 				dev_info(&pf->pdev->dev,
 					 "%s: Add Control Packet Filter AQ command failed =0x%x\n",
@@ -1758,10 +1763,9 @@ static ssize_t i40e_dbg_command_write(struct file *filp,
 				goto command_write_done;
 			}
 			ret = i40e_aq_add_rem_control_packet_filter(&pf->hw,
-						pf->hw.mac.addr,
-						I40E_ETH_P_LLDP, 0,
-						pf->vsi[pf->lan_vsi]->seid,
-						0, false, NULL, NULL);
+						pf->hw.mac.addr, I40E_ETH_P_LLDP, 0,
+						main_vsi->seid, 0, false, NULL,
+						NULL);
 			if (ret) {
 				dev_info(&pf->pdev->dev,
 					 "%s: Remove Control Packet Filter AQ command failed =0x%x\n",
@@ -2230,7 +2234,6 @@ static const struct file_operations i40e_dbg_command_fops = {
 	.read =  i40e_dbg_command_read,
 	.write = i40e_dbg_command_write,
 };
-
 /**************************************************************
  * netdev_ops
  * The netdev_ops entry in debugfs is for giving the driver commands
@@ -2249,6 +2252,7 @@ static ssize_t i40e_dbg_netdev_ops_read(struct file *filp, char __user *buffer,
 					size_t count, loff_t *ppos)
 {
 	struct i40e_pf *pf = filp->private_data;
+	struct i40e_vsi *main_vsi;
 	int bytes_not_copied;
 	size_t buf_size = 256;
 	char *buf;
@@ -2264,8 +2268,8 @@ static ssize_t i40e_dbg_netdev_ops_read(struct file *filp, char __user *buffer,
 	if (!buf)
 		return -ENOSPC;
 
-	len = snprintf(buf, buf_size, "%s: %s\n",
-		       pf->vsi[pf->lan_vsi]->netdev->name,
+	main_vsi = i40e_pf_get_main_vsi(pf);
+	len = snprintf(buf, buf_size, "%s: %s\n", main_vsi->netdev->name,
 		       i40e_dbg_netdev_ops_buf);
 
 	bytes_not_copied = copy_to_user(buffer, buf, len);

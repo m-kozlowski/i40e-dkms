@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #define _I40E_DEVIDS_H_
 
@@ -41,5 +41,6 @@
 					 (d) == I40E_DEV_ID_QSFP_C)
 
 #define i40e_is_25G_device(d)		((d) == I40E_DEV_ID_25G_B  || \
-					 (d) == I40E_DEV_ID_25G_SFP28)
+					 (d) == I40E_DEV_ID_25G_SFP28  || \
+					 (d) == I40E_DEV_ID_XXV710_N3000)
 

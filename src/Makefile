@@ -1,14 +1,11 @@
-# SPDX-License-Identifier: GPL-2.0
-# Copyright(c) 2013 - 2022 Intel Corporation.
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2013-2024 Intel Corporation
 
 ifneq ($(KERNELRELEASE),)
 # kbuild part of makefile
 #
 # Makefile for the Intel(R) 40-10 Gigabit Ethernet Connection Network Driver
 #
-# HvB and JaDI
-#
-NEED_AUX_BUS = 2
 
 ccflags-y += -I$(src)
 subdir-ccflags-y += -I$(src)
@@ -37,7 +34,8 @@ i40e-y += kcompat.o
 i40e-y += kcompat_vfd.o
 
 ifeq (${NEED_AUX_BUS},2)
-obj-m += auxiliary.o
+intel_auxiliary-objs := auxiliary.o
+obj-m += intel_auxiliary.o
 $(warning ${NEED_AUX_BUS})
 endif
 
@@ -105,10 +103,6 @@ manfile:
 clean:
 	@+$(call kernelbuild,clean)
 	@-rm -rf *.${MANSECTION}.gz *.ko
-sign:
-	@echo "Signing driver..."
-	@$(call info_signed_modules)
-	@$(call sign_driver)
 
 sign:
 	@echo "Signing driver..."
@@ -119,13 +113,19 @@ mandocs_install: manfile
 	@echo "Copying manpages..."
 	@install -D -m 644 ${DRIVER}.${MANSECTION}.gz ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz
 
-# Install kernel module files. This target is called by the RPM specfile when
-# generating binary RPMs, and is not expected to modify files outside of the
-# build root. Thus, it must not update initramfs, or run depmod.
+# Install kernel module files. It is not expected to modify files outside of
+# the build root. Thus, it must not update initramfs, or run depmod.
 modules_install: default
 	@echo "Installing modules..."
 	@+$(call kernelbuild,modules_install)
-	${auxiliary_post_install}
+	$(MAKE) auxiliary_install
+
+# Install kernel module files without auxiliary. This target is called by the
+# RPM specfile when  generating binary RPMs, and is not expected to modify
+# files outside of the build root. Thus, it must not update initramfs, or run depmod.
+modules_install_no_aux:
+	@echo "Installing modules..."
+	@+$(call kernelbuild,modules_install)
 
 # After installing all the files, perform necessary work to ensure the system
 # will use the new modules. This includes running depmod to update module
@@ -144,13 +144,13 @@ mandocs_uninstall:
 	if [ -e ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz ] ; then \
 		rm -f ${INSTALL_MOD_PATH}${MANDIR}/man${MANSECTION}/${DRIVER}.${MANSECTION}.gz ; \
 	fi;
-	${auxiliary_post_uninstall}
 
 # Remove installed module files. This target is called by the RPM specfile when
 # generating binary RPMs, and is not expected to modify files outside of the
 # build root. Thus, it must not update the initramfs image or run depmod.
 modules_uninstall:
 	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/${DRIVER}.ko;
+	$(MAKE) auxiliary_uninstall
 
 # After uninstalling all the files, perform necessary work to restore the
 # system back to using the default kernel modules. This includes running depmod
@@ -161,6 +161,14 @@ uninstall: modules_uninstall mandocs_uninstall
 
 auxiliary_info:
 	@../scripts/check_aux_bus --verbose --ksrc="${KSRC}" --build-kernel="${BUILD_KERNEL}"
+
+auxiliary_install:
+	@echo "Installing auxiliary..."
+	${auxiliary_post_install}
+
+auxiliary_uninstall:
+	${auxiliary_post_uninstall}
+
 
 ifeq (${NEED_AUX_BUS},1)
 default: auxiliary_info
@@ -191,6 +199,8 @@ help:
 	@echo '  mandocs_uninstall   - uninstall the manpage only'
 	@echo '  uninstall           - Uninstall the module(s) and manpage, and update initramfs'
 	@echo '  auxiliary_info      - Print information about the auxiliary module'
+	@echo '  auxiliary_install   - Install compiled auxiliary module'
+	@echo '  auxiliary_uninstall - Uninstall auxiliary module'
 	@echo '  help                - Display this help message'
 	@echo ''
 	@echo 'Variables:'

@@ -1,15 +1,17 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifndef _KCOMPAT_H_
 #define _KCOMPAT_H_
 
-#include "kcompat_gcc.h"
 #ifndef LINUX_VERSION_CODE
 #include <linux/version.h>
 #else
 #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
 #endif
+
+#include "kcompat_gcc.h"
+
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
@@ -36,30 +38,9 @@
 #include <linux/udp.h>
 #include <linux/vmalloc.h>
 
-#ifndef GCC_VERSION
-#define GCC_VERSION (__GNUC__ * 10000		\
-		     + __GNUC_MINOR__ * 100	\
-		     + __GNUC_PATCHLEVEL__)
-#endif /* GCC_VERSION */
-
 #ifndef IEEE_8021QAZ_APP_SEL_DSCP
 #define IEEE_8021QAZ_APP_SEL_DSCP	5
 #endif
-
-/* Backport macros for controlling GCC diagnostics */
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0) )
-
-/* Compilers before gcc-4.6 do not understand "#pragma GCC diagnostic push" */
-#if GCC_VERSION >= 40600
-#define __diag_str1(s)		#s
-#define __diag_str(s)		__diag_str1(s)
-#define __diag(s)		_Pragma(__diag_str(GCC diagnostic s))
-#else
-#define __diag(s)
-#endif /* GCC_VERSION >= 4.6 */
-#define __diag_push()	__diag(push)
-#define __diag_pop()	__diag(pop)
-#endif /* LINUX_VERSION < 4.18.0 */
 
 #ifndef NSEC_PER_MSEC
 #define NSEC_PER_MSEC 1000000L
@@ -967,9 +948,7 @@ struct _kc_ethtool_pauseparam {
   #endif /*  LINUX_VERSION_CODE == KERNEL_VERSION(4,15,0) */
 #endif /* if (NOT RHEL && NOT SLES && NOT UBUNTU) */
 
-
 #ifdef __KLOCWORK__
- */
 #ifdef ARRAY_SIZE
 #undef ARRAY_SIZE
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
@@ -1275,7 +1254,6 @@ int snprintf(char * buf, size_t size, const char *fmt, ...);
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
 #endif
 #endif /* 2.4.10 -> 2.4.6 */
-
 
 /*****************************************************************************/
 /* 2.4.12 => 2.4.10 */
@@ -2366,11 +2344,6 @@ void _kc_pci_restore_state(struct pci_dev *);
 void _kc_free_netdev(struct net_device *);
 #define free_netdev(netdev) _kc_free_netdev(netdev)
 #endif
-static inline int pci_enable_pcie_error_reporting(struct pci_dev __always_unused *dev)
-{
-	return 0;
-}
-#define pci_disable_pcie_error_reporting(dev) do {} while (0)
 #define pci_cleanup_aer_uncorrect_error_status(dev) do {} while (0)
 
 void *_kc_kmemdup(const void *src, size_t len, unsigned gfp);
@@ -2471,8 +2444,6 @@ static inline __wsum csum_unfold(__sum16 n)
 struct pci_dev *_kc_netdev_to_pdev(struct net_device *netdev);
 #define netdev_to_dev(netdev)	\
 	pci_dev_to_dev(_kc_netdev_to_pdev(netdev))
-#define devm_kzalloc(dev, size, flags) kzalloc(size, flags)
-#define devm_kfree(dev, p) kfree(p)
 #else /* 2.6.21 */
 static inline struct device *netdev_to_dev(struct net_device *netdev)
 {
@@ -4311,10 +4282,6 @@ void _kc_skb_add_rx_frag(struct sk_buff * skb, int i, struct page *page,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0) )
 
-#ifndef SIZE_MAX
-#define SIZE_MAX (~(size_t)0)
-#endif
-
 #ifndef BITS_PER_LONG_LONG
 #define BITS_PER_LONG_LONG 64
 #endif
@@ -5639,9 +5606,6 @@ static inline struct sk_buff *__kc_napi_alloc_skb(struct napi_struct *napi, unsi
 #ifndef READ_ONCE
 #define READ_ONCE(_x) ACCESS_ONCE(_x)
 #endif
-#if RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(7,2))
-#define HAVE_NDO_FDB_ADD_VID
-#endif
 #ifndef ETH_MODULE_SFF_8636
 #define ETH_MODULE_SFF_8636		0x3
 #endif
@@ -5658,7 +5622,6 @@ static inline struct sk_buff *__kc_napi_alloc_skb(struct napi_struct *napi, unsi
 #define writel_relaxed	writel
 #endif
 #else /* 3.19.0 */
-#define HAVE_NDO_FDB_ADD_VID
 #define HAVE_RXFH_HASHFUNC
 #define NDO_DFLT_BRIDGE_GETLINK_HAS_BRFLAGS
 #endif /* 3.19.0 */
@@ -6085,7 +6048,6 @@ int _kc_kstrtobool(const char *s, bool *res);
 #else /* >= 4.6.0 */
 #define HAVE_PAGE_COUNT_BULK_UPDATE
 #define HAVE_ETHTOOL_FLOW_UNION_IP6_SPEC
-#define HAVE_PTP_CROSSTIMESTAMP
 #define HAVE_TC_SETUP_CLSFLOWER
 #define HAVE_TC_SETUP_CLSU32
 #endif /* 4.6.0 */
@@ -6188,11 +6150,6 @@ pci_release_mem_regions(struct pci_dev *pdev)
 #define HAVE_ETHTOOL_NEW_1G_BITS
 #define HAVE_ETHTOOL_NEW_10G_BITS
 #endif /* RHEL7.4+ */
-#if (!(SLE_VERSION_CODE) && !(RHEL_RELEASE_CODE)) || \
-     SLE_VERSION_CODE && (SLE_VERSION_CODE <= SLE_VERSION(12,3,0)) || \
-     RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(7,5))
-#define time_is_before_jiffies64(a)	time_after64(get_jiffies_64(), a)
-#endif /* !SLE_VERSION_CODE && !RHEL_RELEASE_CODE || (SLES <= 12.3.0) || (RHEL <= 7.5) */
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))
 static inline void bitmap_from_u64(unsigned long *dst, u64 mask)
 {
@@ -6202,22 +6159,6 @@ static inline void bitmap_from_u64(unsigned long *dst, u64 mask)
 		dst[1] = mask >> 32;
 }
 #endif /* <RHEL7.4 */
-#if (!(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,4)) && \
-     !(SLE_VERSION_CODE >= SLE_VERSION(12,3,0)) && \
-     !(UBUNTU_VERSION_CODE >= UBUNTU_VERSION(4,13,0,16)))
-static inline bool eth_type_vlan(__be16 ethertype)
-{
-	switch (ethertype) {
-	case htons(ETH_P_8021Q):
-#ifdef ETH_P_8021AD
-	case htons(ETH_P_8021AD):
-#endif
-		return true;
-	default:
-		return false;
-	}
-}
-#endif /* Linux < 4.9 || RHEL < 7.4 || SLES < 12.3 || Ubuntu < 4.3.0-16 */
 #else /* >=4.9 */
 #define HAVE_FLOW_DISSECTOR_KEY_VLAN_PRIO
 #define HAVE_ETHTOOL_NEW_1G_BITS
@@ -6255,58 +6196,13 @@ static inline bool _kc_napi_complete_done2(struct napi_struct *napi,
 #define HAVE_ETHTOOL_NEW_2500MB_BITS
 #define HAVE_ETHTOOL_5G_BITS
 #endif /* RHEL7.4+ */
-#if (SLE_VERSION_CODE && (SLE_VERSION_CODE == SLE_VERSION(12,3,0)))
-#define HAVE_STRUCT_DMA_ATTRS
-#endif /* (SLES == 12.3.0) */
 #if (SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0)))
 #define HAVE_NETDEVICE_MIN_MAX_MTU
 #endif /* (SLES >= 12.3.0) */
 #if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5)))
-#define HAVE_STRUCT_DMA_ATTRS
 #define HAVE_RHEL7_EXTENDED_MIN_MAX_MTU
 #define HAVE_NETDEVICE_MIN_MAX_MTU
 #endif
-#if (!(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(12,3,0))) && \
-     !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5))))
-#ifndef dma_map_page_attrs
-#define dma_map_page_attrs __kc_dma_map_page_attrs
-static inline dma_addr_t __kc_dma_map_page_attrs(struct device *dev,
-						 struct page *page,
-						 size_t offset, size_t size,
-						 enum dma_data_direction dir,
-						 unsigned long __always_unused attrs)
-{
-	return dma_map_page(dev, page, offset, size, dir);
-}
-#endif
-
-#ifndef dma_unmap_page_attrs
-#define dma_unmap_page_attrs __kc_dma_unmap_page_attrs
-static inline void __kc_dma_unmap_page_attrs(struct device *dev,
-					     dma_addr_t addr, size_t size,
-					     enum dma_data_direction dir,
-					     unsigned long __always_unused attrs)
-{
-	dma_unmap_page(dev, addr, size, dir);
-}
-#endif
-
-static inline void __page_frag_cache_drain(struct page *page,
-					   unsigned int count)
-{
-#ifdef HAVE_PAGE_COUNT_BULK_UPDATE
-	if (!page_ref_sub_and_test(page, count))
-		return;
-
-	init_page_count(page);
-#else
-	BUG_ON(count > 1);
-	if (!count)
-		return;
-#endif
-	__free_pages(page, compound_order(page));
-}
-#endif /* !SLE_VERSION(12,3,0) && !RHEL_VERSION(7,5) */
 #if ((SLE_VERSION_CODE && (SLE_VERSION_CODE > SLE_VERSION(12,3,0))) ||\
      (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,5)))
 #define HAVE_SWIOTLB_SKIP_CPU_SYNC
@@ -6342,7 +6238,6 @@ static inline void __page_frag_cache_drain(struct page *page,
  */
 #define HAVE_NAPI_STATE_IN_BUSY_POLL
 #define HAVE_TCF_MIRRED_EGRESS_REDIRECT
-#define HAVE_PTP_CLOCK_INFO_ADJFINE
 #endif /* 4.10.0 */
 
 /*****************************************************************************/
@@ -6441,12 +6336,15 @@ static inline void _kc_dev_consume_skb_any(struct sk_buff *skb)
 typedef struct {
 	__u8 b[UUID_SIZE];
 } uuid_t;
+
+#ifndef UUID_INIT
 #define UUID_INIT(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)		\
 ((uuid_t)								\
 {{ ((a) >> 24) & 0xff, ((a) >> 16) & 0xff, ((a) >> 8) & 0xff, (a) & 0xff, \
    ((b) >> 8) & 0xff, (b) & 0xff,					\
    ((c) >> 8) & 0xff, (c) & 0xff,					\
    (d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7) }})
+#endif
 
 static inline bool uuid_equal(const uuid_t *u1, const uuid_t *u2)
 {
@@ -6695,37 +6593,6 @@ static inline unsigned long _kc_array_index_mask_nospec(unsigned long index,
 #ifndef sizeof_field
 #define sizeof_field(TYPE, MEMBER) (sizeof((((TYPE *)0)->MEMBER)))
 #endif /* sizeof_field */
-/* add a check for the Oracle UEK 4.14.35 kernel as
- * it backported a version of this bitmap function
- */
-#if !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,0)) && \
-    !(SLE_VERSION_CODE >= SLE_VERSION(12,5,0) && \
-      SLE_VERSION_CODE < SLE_VERSION(15,0,0) || \
-      SLE_VERSION_CODE >= SLE_VERSION(15,1,0)) && \
-    !(LINUX_VERSION_CODE == KERNEL_VERSION(4,14,35))
-/*
- * Copy bitmap and clear tail bits in last word.
- */
-static inline void
-bitmap_copy_clear_tail(unsigned long *dst, const unsigned long *src, unsigned int nbits)
-{
-	bitmap_copy(dst, src, nbits);
-	if (nbits % BITS_PER_LONG)
-		dst[nbits / BITS_PER_LONG] &= BITMAP_LAST_WORD_MASK(nbits);
-}
-
-/*
- * On 32-bit systems bitmaps are represented as u32 arrays internally, and
- * therefore conversion is not needed when copying data from/to arrays of u32.
- */
-#if BITS_PER_LONG == 64
-void bitmap_from_arr32(unsigned long *bitmap, const u32 *buf, unsigned int nbits);
-#else
-#define bitmap_from_arr32(bitmap, buf, nbits)			\
-	bitmap_copy_clear_tail((unsigned long *) (bitmap),	\
-			       (const unsigned long *) (buf), (nbits))
-#endif /* BITS_PER_LONG == 64 */
-#endif /* !(RHEL >= 8.0) && !(SLES >= 12.5 && SLES < 15.0 || SLES >= 15.1) */
 #else /* >= 4.16 */
 #include <linux/nospec.h>
 #define HAVE_TC_FLOWER_OFFLOAD_COMMON_EXTACK
@@ -6749,14 +6616,10 @@ void _kc_pcie_print_link_status(struct pci_dev *dev);
 
 /*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
-#include "kcompat_overflow.h"
-
 #if (SLE_VERSION_CODE < SLE_VERSION(15,1,0))
 #define firmware_request_nowarn	request_firmware_direct
 #endif /* SLES < 15.1 */
-
 #else
-#include <linux/overflow.h>
 #include <net/xdp_sock.h>
 #define HAVE_XDP_FRAME_STRUCT
 #define HAVE_XDP_SOCK
@@ -6801,7 +6664,6 @@ static inline void __kc_metadata_dst_free(void *md_dst)
 #define HAVE_NETDEV_SB_DEV
 #define HAVE_TCF_VLAN_TPID
 #define HAVE_RHASHTABLE_TYPES
-#define HAVE_DEVLINK_PARAMS
 #endif /* 4.19.0 */
 
 /*****************************************************************************/
@@ -6818,7 +6680,6 @@ static inline void __kc_metadata_dst_free(void *md_dst)
 #else /* >= 4.20.0 */
 #define HAVE_DEVLINK_ESWITCH_OPS_EXTACK
 #define HAVE_AF_XDP_ZC_SUPPORT
-#define HAVE_VXLAN_TYPE
 #define HAVE_ETF_SUPPORT /* Earliest TxTime First */
 #endif /* 4.20.0 */
 
@@ -6858,23 +6719,6 @@ _kc_dev_change_flags(struct net_device *netdev, unsigned int flags,
      (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
 #define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
 #define HAVE_PTP_CLOCK_INFO_GETTIMEX64
-#else /* RHEL >= 7.7 && RHEL < 8.0 || RHEL >= 8.1 */
-struct ptp_system_timestamp {
-	struct timespec64 pre_ts;
-	struct timespec64 post_ts;
-};
-
-static inline void
-ptp_read_system_prets(struct ptp_system_timestamp __always_unused *sts)
-{
-	;
-}
-
-static inline void
-ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
-{
-	;
-}
 #endif /* !(RHEL >= 7.7 && RHEL != 8.0) */
 #if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,1)))
 #define HAVE_NDO_BRIDGE_SETLINK_EXTACK
@@ -6882,15 +6726,12 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 #if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))
 #define HAVE_TC_INDIR_BLOCK
 #endif /* RHEL 8.2 */
-#define INDIRECT_CALLABLE_DECLARE(x) x
 #else /* >= 5.0.0 */
 #define HAVE_PTP_SYS_OFFSET_EXTENDED_IOCTL
 #define HAVE_PTP_CLOCK_INFO_GETTIMEX64
 #define HAVE_NDO_BRIDGE_SETLINK_EXTACK
 #define HAVE_DMA_ALLOC_COHERENT_ZEROES_MEM
-#define HAVE_GENEVE_TYPE
 #define HAVE_TC_INDIR_BLOCK
-#define HAVE_INDIRECT_CALL_WRAPPER_HEADER
 #endif /* 5.0.0 */
 
 /*****************************************************************************/
@@ -6900,117 +6741,14 @@ ptp_read_system_postts(struct ptp_system_timestamp __always_unused *sts)
 #define HAVE_NDO_FDB_ADD_EXTACK
 #define HAVE_DEVLINK_INFO_GET
 #define HAVE_DEVLINK_FLASH_UPDATE
-#else /* RHEL < 8.1 */
-#ifdef HAVE_TC_SETUP_CLSFLOWER
-#include <net/pkt_cls.h>
-
-struct flow_match {
-	struct flow_dissector	*dissector;
-	void			*mask;
-	void			*key;
-};
-
-struct flow_match_basic {
-	struct flow_dissector_key_basic *key, *mask;
-};
-
-struct flow_match_control {
-	struct flow_dissector_key_control *key, *mask;
-};
-
-struct flow_match_eth_addrs {
-	struct flow_dissector_key_eth_addrs *key, *mask;
-};
-
-#ifdef HAVE_TC_FLOWER_ENC
-struct flow_match_enc_keyid {
-	struct flow_dissector_key_keyid *key, *mask;
-};
-#endif
-
-#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
-struct flow_match_vlan {
-	struct flow_dissector_key_vlan *key, *mask;
-};
-#endif
-
-struct flow_match_ipv4_addrs {
-	struct flow_dissector_key_ipv4_addrs *key, *mask;
-};
-
-struct flow_match_ipv6_addrs {
-	struct flow_dissector_key_ipv6_addrs *key, *mask;
-};
-
-struct flow_match_ports {
-	struct flow_dissector_key_ports *key, *mask;
-};
-
-struct flow_rule {
-	struct flow_match	match;
-#if 0
-	/* In 5.1+ kernels, action is a member of struct flow_rule but is
-	 * not compatible with how we kcompat tc_cls_flower_offload_flow_rule
-	 * below.  By not declaring it here, any driver that attempts to use
-	 * action as an element of struct flow_rule will fail to compile
-	 * instead of silently trying to access memory that shouldn't be.
-	 */
-	struct flow_action	action;
-#endif
-};
-
-void flow_rule_match_basic(const struct flow_rule *rule,
-			   struct flow_match_basic *out);
-void flow_rule_match_control(const struct flow_rule *rule,
-			     struct flow_match_control *out);
-void flow_rule_match_eth_addrs(const struct flow_rule *rule,
-			       struct flow_match_eth_addrs *out);
-#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
-void flow_rule_match_vlan(const struct flow_rule *rule,
-			  struct flow_match_vlan *out);
-#endif
-void flow_rule_match_ipv4_addrs(const struct flow_rule *rule,
-				struct flow_match_ipv4_addrs *out);
-void flow_rule_match_ipv6_addrs(const struct flow_rule *rule,
-				struct flow_match_ipv6_addrs *out);
-void flow_rule_match_ports(const struct flow_rule *rule,
-			   struct flow_match_ports *out);
-#ifdef HAVE_TC_FLOWER_ENC
-void flow_rule_match_enc_ports(const struct flow_rule *rule,
-			       struct flow_match_ports *out);
-void flow_rule_match_enc_control(const struct flow_rule *rule,
-				 struct flow_match_control *out);
-void flow_rule_match_enc_ipv4_addrs(const struct flow_rule *rule,
-				    struct flow_match_ipv4_addrs *out);
-void flow_rule_match_enc_ipv6_addrs(const struct flow_rule *rule,
-				    struct flow_match_ipv6_addrs *out);
-void flow_rule_match_enc_keyid(const struct flow_rule *rule,
-			       struct flow_match_enc_keyid *out);
-#endif
-
-static inline struct flow_rule *
-tc_cls_flower_offload_flow_rule(struct tc_cls_flower_offload *tc_flow_cmd)
-{
-	return (struct flow_rule *)&tc_flow_cmd->dissector;
-}
-
-static inline bool flow_rule_match_key(const struct flow_rule *rule,
-				       enum flow_dissector_key_id key)
-{
-	return dissector_uses_key(rule->match.dissector, key);
-}
-#endif /* HAVE_TC_SETUP_CLSFLOWER */
-
 #endif /* RHEL < 8.1 */
 #else /* >= 5.1.0 */
 #define HAVE_NDO_FDB_ADD_EXTACK
 #define NO_XDP_QUERY_XSK_UMEM
 #define HAVE_AF_XDP_NETDEV_UMEM
 #define HAVE_TC_FLOW_RULE_INFRASTRUCTURE
-#define HAVE_TC_FLOWER_ENC_IP
 #define HAVE_DEVLINK_INFO_GET
 #define HAVE_DEVLINK_FLASH_UPDATE
-#define HAVE_DEVLINK_PORT_PARAMS
 #endif /* 5.1.0 */
 
 /*****************************************************************************/
@@ -7043,14 +6781,9 @@ __kc_eth_get_headlen(const struct net_device __always_unused *dev, void *data,
 #endif
 #endif /* mmiowb */
 
-#if (RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(8,1))
-#define HAVE_NDO_GET_DEVLINK_PORT
-#endif /* RHEL > 8.1 */
-
 #else /* >= 5.2.0 */
 #define HAVE_NDO_SELECT_QUEUE_FALLBACK_REMOVED
 #define SPIN_UNLOCK_IMPLIES_MMIOWB
-#define HAVE_NDO_GET_DEVLINK_PORT
 #endif /* 5.2.0 */
 
 /*****************************************************************************/
@@ -7162,17 +6895,6 @@ static inline void _kc_bitmap_set_value8(unsigned long *map,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,7,0))
 u64 _kc_pci_get_dsn(struct pci_dev *dev);
 #define pci_get_dsn(dev) _kc_pci_get_dsn(dev)
-/* add a check for the Oracle UEK 5.4.17 kernel which
- * backported the rename of the aer functions
- */
-#if !(SLE_VERSION_CODE > SLE_VERSION(15,2,0)) && \
-    !((LINUX_VERSION_CODE == KERNEL_VERSION(5,3,18)) && \
-      (SLE_LOCALVERSION_CODE >= KERNEL_VERSION(14,0,0))) && \
-    !(LINUX_VERSION_CODE == KERNEL_VERSION(5,4,17)) && \
-    !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,3)))
-#define pci_aer_clear_nonfatal_status	pci_cleanup_aer_uncorrect_error_status
-#endif
-
 #ifndef DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID
 #define DEVLINK_INFO_VERSION_GENERIC_FW_BUNDLE_ID "fw.bundle_id"
 #endif
@@ -7184,25 +6906,12 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev);
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0))
 #if !(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4))) && \
     !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(15,3,0))
+/* (RHEL < 8.4) || (SLE < 15.3) */
 #define xdp_convert_buff_to_frame convert_to_xdp_frame
-#endif /* (RHEL < 8.4) || (SLE < 15.3) */
-#define flex_array_size(p, member, count) \
-	array_size(count, sizeof(*(p)->member) + __must_be_array((p)->member))
-#if (!(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(15,3,0)))
-#ifdef HAVE_AF_XDP_ZC_SUPPORT
-#ifndef xsk_umem_get_rx_frame_size
-static inline u32 _xsk_umem_get_rx_frame_size(struct xdp_umem *umem)
-{
-	return umem->chunk_size_nohr - XDP_PACKET_HEADROOM;
-}
-
-#define xsk_umem_get_rx_frame_size _xsk_umem_get_rx_frame_size
-#endif /* xsk_umem_get_rx_frame_size */
-#endif /* HAVE_AF_XDP_ZC_SUPPORT */
-#else /* SLE >= 15.3 */
+#elif (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,4)))
+/* RHEL >= 8.4 */
 #define HAVE_XDP_BUFF_FRAME_SZ
-#define HAVE_MEM_TYPE_XSK_BUFF_POOL
-#endif /* SLE >= 15.3 */
+#endif
 #else /* >= 5.8.0 */
 #define HAVE_TC_FLOW_INDIR_DEV
 #define HAVE_TC_FLOW_INDIR_BLOCK_CLEANUP
@@ -7235,44 +6944,12 @@ static inline u32 _xsk_umem_get_rx_frame_size(struct xdp_umem *umem)
 #endif /* SLE_VERSION_CODE && SLE_VERSION_CODE >= SLES15SP3 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,10,0))
-#if (!(SLE_VERSION_CODE && (SLE_VERSION_CODE >= SLE_VERSION(15,3,0))))
-#define XDP_SETUP_XSK_POOL XDP_SETUP_XSK_UMEM
-#define xsk_get_pool_from_qid xdp_get_umem_from_qid
-#define xsk_pool_get_rx_frame_size xsk_umem_get_rx_frame_size
-#define xsk_pool_set_rxq_info xsk_buff_set_rxq_info
-#define xsk_pool_dma_unmap xsk_buff_dma_unmap
-#define xsk_pool_dma_map xsk_buff_dma_map
-#define xsk_tx_peek_desc xsk_umem_consume_tx
-#define xsk_tx_release xsk_umem_consume_tx_done
-#define xsk_tx_completed xsk_umem_complete_tx
-#define xsk_uses_need_wakeup xsk_umem_uses_need_wakeup
-
-#ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
-#include <net/xdp_sock_drv.h>
-static inline void
-_kc_xsk_buff_dma_sync_for_cpu(struct xdp_buff *xdp,
-			      void __always_unused *pool)
-{
-	xsk_buff_dma_sync_for_cpu(xdp);
-}
-
-#define xsk_buff_dma_sync_for_cpu(xdp, pool) \
-	_kc_xsk_buff_dma_sync_for_cpu(xdp, pool)
-#endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
-
-#else /* SLE >= 15.3 */
-#define HAVE_NETDEV_BPF_XSK_POOL
-#endif /* SLE >= 15.3 */
-#else /* >= 5.10.0 */
-#define HAVE_NETDEV_BPF_XSK_POOL
-#endif /* <5.10.0 */
-
-
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0))
-#ifdef HAVE_XDP_BUFF_RXQ
+#ifdef HAVE_XDP_RXQ_INFO_REG_3_PARAMS
+#ifdef HAVE_XDP_BUFF_IN_XDP_H
 #include <net/xdp.h>
+#else
+#include <linux/filter.h>
+#endif /* HAVE_XDP_BUFF_IN_XDP_H */
 static inline int
 _kc_xdp_rxq_info_reg(struct xdp_rxq_info *xdp_rxq, struct net_device *dev,
 		     u32 queue_index, unsigned int __always_unused napi_id)
@@ -7282,7 +6959,8 @@ _kc_xdp_rxq_info_reg(struct xdp_rxq_info *xdp_rxq, struct net_device *dev,
 
 #define xdp_rxq_info_reg(xdp_rxq, dev, queue_index, napi_id) \
 	_kc_xdp_rxq_info_reg(xdp_rxq, dev, queue_index, napi_id)
-#endif /* HAVE_XDP_BUFF_RXQ */
+#endif /* HAVE_XDP_RXQ_INFO_REG_3_PARAMS */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0))
 #ifdef HAVE_NAPI_BUSY_LOOP
 #ifdef CONFIG_NET_RX_BUSY_POLL
 #include <net/busy_poll.h>
@@ -7301,6 +6979,12 @@ _kc_napi_busy_loop(unsigned int napi_id,
 #endif /* HAVE_NAPI_BUSY_LOOP */
 #endif /* <5.11.0 */
 
+/*****************************************************************************/
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0))
+#define HAVE_GRO_HEADER
+#endif /* >=5.12.0 */
+
+/*****************************************************************************/
 /*
  * Load the implementations file which actually defines kcompat backports.
  * Legacy backports still exist in this file, but all new backports must be
