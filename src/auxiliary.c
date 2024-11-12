@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
@@ -11,14 +11,13 @@
 #include <linux/pm_runtime.h>
 #include <linux/string.h>
 #include "linux/auxiliary_bus.h"
-#include "auxiliary_compat.h"
 
 static const struct auxiliary_device_id *auxiliary_match_id(const struct auxiliary_device_id *id,
 							    const struct auxiliary_device *auxdev)
 {
 	for (; id->name[0]; id++) {
 		const char *p = strrchr(dev_name(&auxdev->dev), '.');
-		int match_size;
+		size_t match_size;
 
 		if (!p)
 			continue;
@@ -106,7 +105,7 @@ static void auxiliary_bus_shutdown(struct device *dev)
 }
 
 static struct bus_type auxiliary_bus_type = {
-	.name = "auxiliary",
+	.name = "intel_auxiliary",
 	.probe = auxiliary_bus_probe,
 	.remove = auxiliary_bus_remove,
 	.shutdown = auxiliary_bus_shutdown,
@@ -231,6 +230,8 @@ EXPORT_SYMBOL_GPL(auxiliary_find_device);
 int __auxiliary_driver_register(struct auxiliary_driver *auxdrv,
 				struct module *owner, const char *modname)
 {
+	int ret;
+
 	if (WARN_ON(!auxdrv->probe) || WARN_ON(!auxdrv->id_table))
 		return -EINVAL;
 
@@ -246,7 +247,11 @@ int __auxiliary_driver_register(struct auxiliary_driver *auxdrv,
 	auxdrv->driver.bus = &auxiliary_bus_type;
 	auxdrv->driver.mod_name = modname;
 
-	return driver_register(&auxdrv->driver);
+	ret = driver_register(&auxdrv->driver);
+	if (ret)
+		kfree(auxdrv->driver.name);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(__auxiliary_driver_register);
 

@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifndef _I40E_XSK_H_
 #define _I40E_XSK_H_
@@ -14,7 +14,7 @@
  */
 #define PKTS_PER_BATCH 4
 
-#if   __GNUC__ >= 8
+#if __GNUC__ >= 8
 #define loop_unrolled_for _Pragma("GCC unroll 4") for
 #else
 #define loop_unrolled_for for

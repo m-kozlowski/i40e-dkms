@@ -1,3 +1,9 @@
+i40e-dkms (2.19.3+nmu1) unstable; urgency=medium
+
+  * New upstream release 2.26.8
+
+ -- Bas van der Vlies <=bas.vandervlies@surf.nl>  Tue, 12 Nov 2024 09:00:35 +0100
+
 i40e-dkms (2.19.3) UNRELEASED; urgency=medium
 
   [ Jaap Dijkshoorn ]

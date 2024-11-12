@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-2.0
-# Copyright(c) 2013 - 2022 Intel Corporation.
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2013-2024 Intel Corporation
 
 #
 # common Makefile rules useful for out-of-tree Linux driver builds
@@ -16,6 +16,8 @@
 # Helpful functions #
 #####################
 
+SHELL := $(shell which bash)
+src ?= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 readlink = $(shell readlink -f ${1})
 
 # helper functions for converting kernel version to version codes
@@ -33,17 +35,6 @@ cmd_depmod = /sbin/depmod $(if ${SYSTEM_MAP_FILE},-e -F ${SYSTEM_MAP_FILE}) \
                           $(if $(strip ${INSTALL_MOD_PATH}),-b ${INSTALL_MOD_PATH}) \
                           -a ${KVER}
 
-################
-# dracut Macro #
-################
-
-cmd_initrd := $(shell \
-                if which dracut > /dev/null 2>&1 ; then \
-                    echo "dracut --force"; \
-                elif which update-initramfs > /dev/null 2>&1 ; then \
-                    echo "update-initramfs -u"; \
-                fi )
-
 #####################
 # Environment tests #
 #####################
@@ -59,10 +50,8 @@ endif
 KSP :=  /lib/modules/${BUILD_KERNEL}/source \
         /lib/modules/${BUILD_KERNEL}/build \
         /usr/src/linux-${BUILD_KERNEL} \
-        /usr/src/linux-$(${BUILD_KERNEL} | sed 's/-.*//') \
         /usr/src/kernel-headers-${BUILD_KERNEL} \
         /usr/src/kernel-source-${BUILD_KERNEL} \
-        /usr/src/linux-$(${BUILD_KERNEL} | sed 's/\([0-9]*\.[0-9]*\)\..*/\1/') \
         /usr/src/linux \
         /usr/src/kernels/${BUILD_KERNEL} \
         /usr/src/kernels
@@ -106,7 +95,7 @@ ifneq ($(and $(SIGN_FILE_EXISTS),$(PRIV_KEY_EXISTS),$(PUB_KEY_EXISTS)),)
     echo "*** Is public key present: ${PUB_KEY_EXISTS}" ;
   info_signed_modules += echo "*** All files are present, signing driver." ;
   sign_driver = $(shell ${SCRIPT_PATH}/sign-file sha256 intel-linux-key.key \
-                        intel-linux-key.crt i40e.ko)
+                        intel-linux-key.crt ${DRIVER}.ko)
 else
   info_signed_modules += echo "*** Files are missing, cannot sign driver." ;
   sign_driver =
@@ -173,6 +162,19 @@ endif
 get_config_value = $(shell ${CC} -E -dM ${CONFIG_FILE} 2> /dev/null |\
                            grep -m 1 ${1} | awk '{ print $$3 }')
 
+################
+# dracut Macro #
+################
+
+cmd_initrd := $(shell \
+                if [[ ${KOBJ} != /lib/modules/${BUILD_KERNEL}/* ]]; then \
+                    echo ""; \
+                elif which dracut > /dev/null 2>&1 ; then \
+                    echo "dracut --force --kver ${BUILD_KERNEL}"; \
+                elif which update-initramfs > /dev/null 2>&1 ; then \
+                    echo "update-initramfs -u -k ${BUILD_KERNEL}"; \
+                fi )
+
 ########################
 # Check module signing #
 ########################
@@ -199,6 +201,7 @@ warn_signed_modules += \
     echo "*** disabled for this build." ;
 endif # CONFIG_MODULE_SIG_ALL=y
 ifeq (${CONFIG_MODULE_SIG_FORCE},1)
+  warn_signed_modules += \
     echo "warning: The target kernel has CONFIG_MODULE_SIG_FORCE enabled," ; \
     echo "warning: but the signing key cannot be found. The module must" ; \
     echo "warning: be signed manually using 'scripts/sign-file'." ;
@@ -309,42 +312,16 @@ minimum_kver_check = $(eval $(call _minimum_kver_check,${1},${2},${3}))
 # entire feature ought to be excluded on some kernels due to missing
 # functionality.
 #
-# To support this, kcompat_defs.h is compiled and converted into a word list
+# To support this, kcompat_defs.h is preprocessed and converted into a word list
 # that can be checked to determine whether a given kcompat feature flag will
 # be defined for this kernel.
 #
-# KCOMPAT_DEFINITIONS holds the set of all macros which are defined. Note
-# this does include a large number of standard/builtin definitions.
-#
-# Use is_kcompat_defined as a $(call) function to check whether a given flag
-# is defined or undefined. For example:
-#
-#   ifeq ($(call is_kcompat_defined,HAVE_FEATURE_FLAG),1)
-#
-#   ifneq ($(call is_kcompat_defined,HAVE_FEATURE_FLAG),1)
-#
-# The is_kcompat_defined function returns 1 if the macro name is defined,
-# and the empty string otherwise.
-#
-# There is no mechanism to extract the value of the kcompat definition.
-# Supporting this would be non-trivial as Make does not have a map variable
-# type.
-#
-# Note that only the new layout is supported. Legacy definitions in
-# kcompat.h are not supported. If you need to check one of these, please
-# refactor it into the new layout.
 
-ifneq ($(wildcard ./kcompat_defs.h),)
-KCOMPAT_DEFINITIONS := $(shell ${CC} ${EXTRA_CFLAGS} -E -dM \
-                                     -I${KOBJ}/include \
-                                     -I${KOBJ}/include/generated/uapi \
-                                     kcompat_defs.h | awk '{ print $$2 }')
-
-is_kcompat_defined = $(if $(filter ${1},${KCOMPAT_DEFINITIONS}),1,)
-else
-KCOMPAT_DEFINITIONS :=
-is_kcompat_defined =
-endif
+# call script that populates defines automatically
+$(if $(shell \
+    $(if $(findstring 1,${V}),,QUIET_COMPAT=1) \
+    KSRC=${KSRC} OUT=${src}/kcompat_generated_defs.h CONFIG_FILE=${CONFIG_FILE} \
+    bash ${src}/kcompat-generator.sh && echo ok), , $(error kcompat-generator.sh failed))
 
 ################
 # Manual Pages #
@@ -410,8 +387,9 @@ export INSTALL_MOD_DIR ?= updates/drivers/net/ethernet/intel/${DRIVER}
 # If the check_aux_bus script exists, then this driver depends on the
 # auxiliary module. Run the script to determine if we need to include
 # auxiliary files with this build.
-ifneq ($(call test_file,../scripts/check_aux_bus),)
-NEED_AUX_BUS := $(shell ../scripts/check_aux_bus --ksrc="${KSRC}" --build-kernel="${BUILD_KERNEL}" >/dev/null 2>&1; echo $$?)
+CHECK_AUX_BUS ?= ../scripts/check_aux_bus
+ifneq ($(call test_file,${CHECK_AUX_BUS}),)
+NEED_AUX_BUS := $(shell ${CHECK_AUX_BUS} --ksrc="${KSRC}" --build-kernel="${BUILD_KERNEL}" >/dev/null 2>&1; echo $$?)
 endif # check_aux_bus exists
 
 # The out-of-tree auxiliary module we ship should be moved into this
@@ -420,13 +398,15 @@ export INSTALL_AUX_DIR ?= updates/drivers/net/ethernet/intel/auxiliary
 
 # If we're installing auxiliary bus out-of-tree, the following steps are
 # necessary to ensure the relevant files get put in place.
+AUX_BUS_HEADERS ?= linux/auxiliary_bus.h auxiliary_compat.h kcompat_generated_defs.h
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_install
-	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/auxiliary.symvers
+	install -D -m 644 Module.symvers ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
 	install -d ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}
-	mv -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/auxiliary.ko \
-	      ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/auxiliary.ko
-	install -D -m 644 linux/auxiliary_bus.h ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
+	mv -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_MOD_DIR}/intel_auxiliary.ko* \
+	      ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/
+	install -d ${INSTALL_MOD_PATH}/${KSRC}/include/linux
+	install -D -m 644 ${AUX_BUS_HEADERS} -t ${INSTALL_MOD_PATH}/${KSRC}/include/linux
 endef
 else
 auxiliary_post_install =
@@ -434,14 +414,19 @@ endif
 
 ifeq (${NEED_AUX_BUS},2)
 define auxiliary_post_uninstall
-	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/auxiliary.symvers
-	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/auxiliary.ko
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/extern-symvers/intel_auxiliary.symvers
+	rm -f ${INSTALL_MOD_PATH}/lib/modules/${KVER}/${INSTALL_AUX_DIR}/intel_auxiliary.ko*
 	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_bus.h
+	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/auxiliary_compat.h
+	rm -f ${INSTALL_MOD_PATH}/${KSRC}/include/linux/kcompat_generated_defs.h
 endef
 else
 auxiliary_post_uninstall =
 endif
 
+ifeq (${NEED_AUX_BUS},2)
+EXTRA_CFLAGS += -DUSE_INTEL_AUX_BUS
+endif
 ######################
 # Kernel Build Macro #
 ######################
@@ -463,7 +448,7 @@ endif
 # W -- if set, enables the W= kernel warnings options
 # C -- if set, enables the C= kernel sparse build options
 #
-kernelbuild = $(call warn_signed_modules) \
+kernelbuild = ${Q}$(call warn_signed_modules) \
               ${MAKE} $(if ${GCC_I_SYS},CC="${GCC_I_SYS}") \
                       ${CCFLAGS_VAR}="${EXTRA_CFLAGS}" \
                       -C "${KSRC}" \

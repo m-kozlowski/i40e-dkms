@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 #include <linux/bpf_trace.h>
@@ -223,10 +223,11 @@ static int i40e_xsk_umem_enable(struct i40e_vsi *vsi, struct xdp_umem *umem,
 #endif /* HAVE_AF_XDP_NETDEV_UMEM */
 #ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-	err = xsk_buff_dma_map(pool->umem, &vsi->back->pdev->dev,
+	err = xsk_pool_dma_map(pool, &vsi->back->pdev->dev,
 			       I40E_RX_DMA_ATTR);
 #else
-	xsk_buff_dma_map(umem, &vsi->back->pdev->dev, I40E_RX_DMA_ATTR);
+	err = xsk_pool_dma_map(umem, &vsi->back->pdev->dev,
+			       I40E_RX_DMA_ATTR);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 #else
 	reuseq = xsk_reuseq_prepare(vsi->rx_rings[0]->count);
@@ -291,8 +292,8 @@ static int i40e_xsk_pool_disable(struct i40e_vsi *vsi, u16 qid)
  *
  * Returns 0 on success, <0 on failure
  **/
-#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 static int i40e_xsk_umem_disable(struct i40e_vsi *vsi, u16 qid)
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 {
 #ifdef HAVE_AF_XDP_NETDEV_UMEM
 	struct net_device *netdev = vsi->netdev;
@@ -307,10 +308,10 @@ static int i40e_xsk_umem_disable(struct i40e_vsi *vsi, u16 qid)
 
 #ifdef HAVE_AF_XDP_NETDEV_UMEM
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-	pool = xdp_get_xsk_pool_from_qid(netdev, qid);
+	pool = xsk_get_pool_from_qid(netdev, qid);
 	if (!pool)
 #else
-	umem = xdp_get_umem_from_qid(netdev, qid);
+	umem = xsk_get_pool_from_qid(netdev, qid);
 	if (!umem)
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 #else
@@ -330,9 +331,9 @@ static int i40e_xsk_umem_disable(struct i40e_vsi *vsi, u16 qid)
 #ifdef HAVE_AF_XDP_NETDEV_UMEM
 #ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-	xsk_buff_dma_unmap(pool->umem, I40E_RX_DMA_ATTR);
+	xsk_pool_dma_unmap(pool, I40E_RX_DMA_ATTR);
 #else
-	xsk_buff_dma_unmap(umem, I40E_RX_DMA_ATTR);
+	xsk_pool_dma_unmap(umem, I40E_RX_DMA_ATTR);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 #else
 	i40e_xsk_umem_dma_unmap(vsi, umem);
@@ -616,7 +617,7 @@ __i40e_alloc_rx_buffers_zc(struct i40e_ring *rx_ring, u16 count,
 	do {
 #ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-		xdp = xsk_buff_alloc(rx_ring->xsk_pool->umem);
+		xdp = xsk_buff_alloc(rx_ring->xsk_pool);
 #else
 		xdp = xsk_buff_alloc(rx_ring->xsk_umem);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
@@ -789,12 +790,10 @@ void i40e_zca_free(struct zero_copy_allocator *alloc, unsigned long handle)
 }
 #endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 
-/**
+/*
  * i40e_construct_skb_zc - Create skbuff from zero-copy Rx buffer
  * @rx_ring: Rx ring
-#ifndef HAVE_MEM_TYPE_XSK_BUFF_POOL
  * @bi: Rx buffer
-#endif
  * @xdp: xdp_buff
  *
  * This functions allocates a new skb from a zero-copy Rx buffer.
@@ -812,9 +811,8 @@ static struct sk_buff *i40e_construct_skb_zc(struct i40e_ring *rx_ring,
 	struct sk_buff *skb;
 
 	/* allocate a skb to store the frags */
-	skb = __napi_alloc_skb(&rx_ring->q_vector->napi,
-			       xdp->data_end - xdp->data_hard_start,
-			       GFP_ATOMIC | __GFP_NOWARN);
+	skb = napi_alloc_skb(&rx_ring->q_vector->napi,
+			     xdp->data_end - xdp->data_hard_start);
 	if (unlikely(!skb))
 		return NULL;
 
@@ -898,7 +896,6 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 	struct xdp_umem *umem = rx_ring->xsk_umem;
 #endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 #endif /* HAVE_XDP_BUFF_FRAME_SZ */
-	u16 tpid = rx_ring->vsi->back->hw.second_tag;
 	u16 next_to_clean = rx_ring->next_to_clean;
 	u16 count_mask = rx_ring->count - 1;
 	unsigned int xdp_res, xdp_xmit = 0;
@@ -923,8 +920,6 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 		struct xdp_buff *bi;
 #endif /* HAVE_MEM_TYPE_XSK_BUFF_POOL */
 		unsigned int size;
-		u16 vlan_tag;
-		u8 rx_ptype;
 		u64 qword;
 
 		rx_desc = I40E_RX_DESC(rx_ring, next_to_clean);
@@ -963,7 +958,7 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 #ifdef HAVE_MEM_TYPE_XSK_BUFF_POOL
 		bi = *i40e_rx_bi(rx_ring, next_to_clean);
 		bi->data_end = bi->data + size;
-		xsk_buff_dma_sync_for_cpu(bi, rx_ring->xsk_pool);
+		xsk_buff_dma_sync_for_cpu(bi);
 
 		xdp_res = i40e_run_xdp_zc(rx_ring, bi);
 #else
@@ -1003,13 +998,13 @@ int i40e_clean_rx_irq_zc(struct i40e_ring *rx_ring, int budget)
 
 #ifdef HAVE_NDO_XSK_WAKEUP
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-	if (xsk_umem_uses_need_wakeup(rx_ring->xsk_pool->umem)) {
+	if (xsk_uses_need_wakeup(rx_ring->xsk_pool)) {
 		if (failure || next_to_clean == rx_ring->next_to_use)
-			xsk_set_rx_need_wakeup(rx_ring->xsk_pool->umem);
+			xsk_set_rx_need_wakeup(rx_ring->xsk_pool);
 		else
-			xsk_clear_rx_need_wakeup(rx_ring->xsk_pool->umem);
+			xsk_clear_rx_need_wakeup(rx_ring->xsk_pool);
 #else
-	if (xsk_umem_uses_need_wakeup(rx_ring->xsk_umem)) {
+	if (xsk_uses_need_wakeup(rx_ring->xsk_umem)) {
 		if (failure || rx_ring->next_to_clean == rx_ring->next_to_use)
 			xsk_set_rx_need_wakeup(rx_ring->xsk_umem);
 		else
@@ -1086,7 +1081,8 @@ static void i40e_set_rs_bit(struct i40e_ring *xdp_ring)
 	struct i40e_tx_desc *tx_desc;
 
 	tx_desc = I40E_TX_DESC(xdp_ring, ntu);
-	tx_desc->cmd_type_offset_bsz |= (I40E_TX_DESC_CMD_RS << I40E_TXD_QW1_CMD_SHIFT);
+	tx_desc->cmd_type_offset_bsz |= cpu_to_le64(I40E_TX_DESC_CMD_RS <<
+						    I40E_TXD_QW1_CMD_SHIFT);
 }
 
 /**
@@ -1102,7 +1098,12 @@ static bool i40e_xmit_zc(struct i40e_ring *xdp_ring, unsigned int budget)
 	u32 nb_pkts, nb_processed = 0;
 	unsigned int total_bytes = 0;
 
+#ifdef HAVE_XSK_TX_PEEK_RELEASE_DESC_BATCH_3_PARAMS
 	nb_pkts = xsk_tx_peek_release_desc_batch(xdp_ring->xsk_pool, descs, budget);
+#else
+	nb_pkts = xsk_tx_peek_release_desc_batch(xdp_ring->xsk_pool, budget);
+#endif /* HAVE_XSK_TX_PEEK_RELEASE_3_PARAMS */
+
 	if (!nb_pkts)
 		return true;
 
@@ -1289,9 +1290,9 @@ skip:
 
 	if (xsk_frames)
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-		xsk_umem_complete_tx(bp->umem, xsk_frames);
+		xsk_tx_completed(bp, xsk_frames);
 #else
-		xsk_umem_complete_tx(umem, xsk_frames);
+		xsk_tx_completed(umem, xsk_frames);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 
 	i40e_arm_wb(tx_ring, vsi, completed_frames);
@@ -1299,10 +1300,10 @@ skip:
 out_xmit:
 #ifdef HAVE_NDO_XSK_WAKEUP
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-	if (xsk_umem_uses_need_wakeup(tx_ring->xsk_pool->umem))
-		xsk_set_tx_need_wakeup(tx_ring->xsk_pool->umem);
+	if (xsk_uses_need_wakeup(tx_ring->xsk_pool))
+		xsk_set_tx_need_wakeup(tx_ring->xsk_pool);
 #else
-	if (xsk_umem_uses_need_wakeup(tx_ring->xsk_umem))
+	if (xsk_uses_need_wakeup(tx_ring->xsk_umem))
 		xsk_set_tx_need_wakeup(tx_ring->xsk_umem);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 #endif /* HAVE_NDO_XSK_WAKEUP */
@@ -1321,13 +1322,13 @@ out_xmit:
  **/
 int i40e_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags)
 #else
-/**
+/*
  * i40e_xsk_async_xmit - Implements the ndo_xsk_async_xmit
  * @dev: the netdevice
  * @queue_id: queue id to wake up
  *
  * Returns <0 for errors, 0 otherwise.
- **/
+ */
 int i40e_xsk_async_xmit(struct net_device *dev, u32 queue_id)
 #endif /* HAVE_NDO_XSK_WAKEUP */
 {
@@ -1348,7 +1349,11 @@ int i40e_xsk_async_xmit(struct net_device *dev, u32 queue_id)
 	if (queue_id >= vsi->num_queue_pairs)
 		return -ENXIO;
 
+#ifdef HAVE_NETDEV_BPF_XSK_POOL
+	if (!vsi->xdp_rings[queue_id]->xsk_pool->umem)
+#else
 	if (!vsi->xdp_rings[queue_id]->xsk_umem)
+#endif /* HAVE_NETDEV_BPF_XSK_POOL */
 		return -ENXIO;
 
 	ring = vsi->xdp_rings[queue_id];
@@ -1392,7 +1397,7 @@ void i40e_xsk_clean_rx_ring(struct i40e_ring *rx_ring)
 }
 
 /**
- * i40e_xsk_clean_xdp_ring - Clean the XDP Tx ring on shutdown
+ * i40e_xsk_clean_tx_ring - Clean the XDP Tx ring on shutdown
  * @tx_ring: XDP Tx ring
  **/
 void i40e_xsk_clean_tx_ring(struct i40e_ring *tx_ring)
@@ -1423,9 +1428,9 @@ void i40e_xsk_clean_tx_ring(struct i40e_ring *tx_ring)
 
 	if (xsk_frames)
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
-		xsk_umem_complete_tx(bp->umem, xsk_frames);
+		xsk_tx_completed(bp, xsk_frames);
 #else
-		xsk_umem_complete_tx(umem, xsk_frames);
+		xsk_tx_completed(umem, xsk_frames);
 #endif /* HAVE_NETDEV_BPF_XSK_POOL */
 }
 
@@ -1449,11 +1454,7 @@ bool i40e_xsk_any_rx_ring_enabled(struct i40e_vsi *vsi)
 
 	for (i = 0; i < vsi->num_queue_pairs; i++) {
 #ifdef HAVE_AF_XDP_NETDEV_UMEM
-#ifdef HAVE_NETDEV_BPF_XSK_POOL
-		if (xdp_get_xsk_pool_from_qid(netdev, i))
-#else
-		if (xdp_get_umem_from_qid(netdev, i))
-#endif /* HAVE_NETDEV_BPF_XSK_POOL */
+		if (xsk_get_pool_from_qid(netdev, i))
 #else
 		if (vsi->xsk_umems[i])
 #endif /* HAVE_AF_XDP_NETDEV_UMEM */

@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifndef _I40E_VIRTCHNL_PF_H_
 #define _I40E_VIRTCHNL_PF_H_
@@ -41,6 +41,7 @@ enum i40e_vf_states {
 	I40E_VF_STATE_MC_PROMISC,
 	I40E_VF_STATE_UC_PROMISC,
 	I40E_VF_STATE_PRE_ENABLE,
+	I40E_VF_STATE_RESETTING,
 	I40E_VF_STATE_RESOURCES_LOADED,
 };
 
@@ -89,6 +90,12 @@ struct i40e_time_mac {
 	u8 addr[ETH_ALEN];
 };
 
+struct i40e_mdd_vf_events {
+	u64 count;	/* total count of Rx|Tx events */
+	/* count number of the last printed event */
+	u64 last_printed;
+};
+
 /* VF information structure */
 struct i40e_vf {
 	struct i40e_pf *pf;
@@ -108,6 +115,7 @@ struct i40e_vf {
 	s16 port_vlan_id;
 	bool pf_set_mac;	/* The VMM admin set the VF MAC address */
 	bool trusted;
+	bool source_pruning;
 	u64 reset_timestamp;
 
 	/* VSI indices - actual VSI pointers are maintained in the PF structure
@@ -119,7 +127,9 @@ struct i40e_vf {
 
 	u8 num_queue_pairs;	/* num of qps assigned to VF vsis */
 	u8 num_req_queues;	/* num of requested qps */
-	u64 num_mdd_events;	/* num of mdd events detected */
+	/* num of mdd tx and rx events detected */
+	struct i40e_mdd_vf_events mdd_rx_events;
+	struct i40e_mdd_vf_events mdd_tx_events;
 
 	unsigned long vf_caps;	/* vf's adv. capabilities */
 	unsigned long vf_states;	/* vf's runtime states */
@@ -149,9 +159,9 @@ struct i40e_vf {
 	u8 bw_share;
 	bool bw_share_applied; /* true if config is applied to the device */
 	bool tc_bw_share_req;
-	bool pf_ctrl_disable; /* bool for PF ctrl of VF enable/disable */
 	u8 queue_type;
 	bool allow_bcast;
+	bool is_disabled_from_host; /* bool for PF ctrl of VF enable/disable */
 	/* VLAN list created by VM for trusted and untrusted VF */
 	struct list_head vm_vlan_list;
 	/* MAC list created by VM */
@@ -174,6 +184,7 @@ int i40e_alloc_vfs(struct i40e_pf *pf, u16 num_alloc_vfs);
 int i40e_vc_process_vf_msg(struct i40e_pf *pf, s16 vf_id, u32 v_opcode,
 			   u32 v_retval, u8 *msg, u16 msglen);
 int i40e_vc_process_vflr_event(struct i40e_pf *pf);
+void i40e_vc_reset_vf(struct i40e_vf *vf, bool notify_vf);
 bool i40e_reset_vf(struct i40e_vf *vf, bool flr);
 bool i40e_reset_all_vfs(struct i40e_pf *pf, bool flr);
 void i40e_vc_notify_vf_reset(struct i40e_vf *vf);

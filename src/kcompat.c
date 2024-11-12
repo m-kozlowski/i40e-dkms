@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #include "i40e.h"
 #include "kcompat.h"
@@ -2666,38 +2666,6 @@ void _kc_ethtool_intersect_link_masks(struct ethtool_link_ksettings *dst,
 #endif /* 4.15.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,16,0))
-#if !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,0)) && \
-     !(SLE_VERSION_CODE >= SLE_VERSION(12,5,0) && \
-       SLE_VERSION_CODE < SLE_VERSION(15,0,0) || \
-       SLE_VERSION_CODE >= SLE_VERSION(15,1,0))
-#if BITS_PER_LONG == 64
-/**
- * bitmap_from_arr32 - copy the contents of u32 array of bits to bitmap
- * @bitmap: array of unsigned longs, the destination bitmap
- * @buf: array of u32 (in host byte order), the source bitmap
- * @nbits: number of bits in @bitmap
- */
-void bitmap_from_arr32(unsigned long *bitmap, const u32 *buf, unsigned int nbits)
-{
-	unsigned int i, halfwords;
-
-	halfwords = DIV_ROUND_UP(nbits, 32);
-	for (i = 0; i < halfwords; i++) {
-		bitmap[i/2] = (unsigned long) buf[i];
-		if (++i < halfwords)
-			bitmap[i/2] |= ((unsigned long) buf[i]) << 32;
-	}
-
-	/* Clear tail bits in last word beyond nbits. */
-	if (nbits % BITS_PER_LONG)
-		bitmap[(halfwords - 1) / 2] &= BITMAP_LAST_WORD_MASK(nbits);
-}
-#endif /* BITS_PER_LONG == 64 */
-#endif /* !(RHEL >= 8.0) && !(SLES >= 12.5 && SLES < 15.0 || SLES >= 15.1) */
-#endif /* 4.16.0 */
-
-/*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4,17,0))
 /* PCIe link information */
 #define PCIE_SPEED2STR(speed) \
@@ -2846,94 +2814,6 @@ void _kc_pcie_print_link_status(struct pci_dev *dev) {
 #endif /* 4.17.0 */
 
 /*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,1,0)) || (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(8,1)))
-#ifdef HAVE_TC_SETUP_CLSFLOWER
-#define FLOW_DISSECTOR_MATCH(__rule, __type, __out)				\
-	const struct flow_match *__m = &(__rule)->match;			\
-	struct flow_dissector *__d = (__m)->dissector;				\
-										\
-	(__out)->key = skb_flow_dissector_target(__d, __type, (__m)->key);	\
-	(__out)->mask = skb_flow_dissector_target(__d, __type, (__m)->mask);	\
-
-void flow_rule_match_basic(const struct flow_rule *rule,
-			   struct flow_match_basic *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_BASIC, out);
-}
-
-void flow_rule_match_control(const struct flow_rule *rule,
-			     struct flow_match_control *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_CONTROL, out);
-}
-
-void flow_rule_match_eth_addrs(const struct flow_rule *rule,
-			       struct flow_match_eth_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ETH_ADDRS, out);
-}
-
-#ifdef HAVE_TC_FLOWER_ENC
-void flow_rule_match_enc_keyid(const struct flow_rule *rule,
-			       struct flow_match_enc_keyid *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_KEYID, out);
-}
-
-void flow_rule_match_enc_ports(const struct flow_rule *rule,
-			       struct flow_match_ports *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_PORTS, out);
-}
-
-void flow_rule_match_enc_control(const struct flow_rule *rule,
-				 struct flow_match_control *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_CONTROL, out);
-}
-
-void flow_rule_match_enc_ipv4_addrs(const struct flow_rule *rule,
-				    struct flow_match_ipv4_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS, out);
-}
-
-void flow_rule_match_enc_ipv6_addrs(const struct flow_rule *rule,
-				    struct flow_match_ipv6_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS, out);
-}
-#endif
-
-#ifndef HAVE_TC_FLOWER_VLAN_IN_TAGS
-void flow_rule_match_vlan(const struct flow_rule *rule,
-			  struct flow_match_vlan *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_VLAN, out);
-}
-#endif
-
-void flow_rule_match_ipv4_addrs(const struct flow_rule *rule,
-				struct flow_match_ipv4_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS, out);
-}
-
-void flow_rule_match_ipv6_addrs(const struct flow_rule *rule,
-				struct flow_match_ipv6_addrs *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS, out);
-}
-
-void flow_rule_match_ports(const struct flow_rule *rule,
-			   struct flow_match_ports *out)
-{
-	FLOW_DISSECTOR_MATCH(rule, FLOW_DISSECTOR_KEY_PORTS, out);
-}
-#endif /* HAVE_TC_SETUP_CLSFLOWER */
-#endif /* 5.1.0 || (RHEL && RHEL < 8.1) */
-
-/*****************************************************************************/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5,3,0))
 #if (!(RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,2))))
 #ifdef HAVE_TC_CB_AND_SETUP_QDISC_MQPRIO
@@ -2994,10 +2874,230 @@ u64 _kc_pci_get_dsn(struct pci_dev *dev)
 }
 #endif /* 5.7.0 */
 
-/*****************************************************************************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5,17,0))
-void _kc_eth_hw_addr_set(struct net_device *dev, const void *addr)
+#ifdef NEED_DEVM_KVASPRINTF
+char *devm_kvasprintf(struct device *dev, gfp_t gfp, const char *fmt,
+		      va_list ap)
 {
-	ether_addr_copy(dev->dev_addr, addr);
+	unsigned int len;
+	char *p;
+	va_list aq;
+
+	va_copy(aq, ap);
+	len = vsnprintf(NULL, 0, fmt, aq);
+	va_end(aq);
+
+	p = devm_kmalloc(dev, len + 1, gfp);
+	if (!p)
+		return NULL;
+
+	vsnprintf(p, len + 1, fmt, ap);
+
+	return p;
 }
-#endif /* 5.17.0 */
+#endif /* NEED_DEVM_KVASPRINTF */
+
+#ifdef NEED_DEVM_KASPRINTF
+char *devm_kasprintf(struct device *dev, gfp_t gfp, const char *fmt, ...)
+{
+	va_list ap;
+	char *p;
+
+	va_start(ap, fmt);
+	p = devm_kvasprintf(dev, gfp, fmt, ap);
+	va_end(ap);
+
+	return p;
+}
+#endif /* NEED_DEVM_KASPRINTF */
+
+#ifdef NEED_PCI_IOV_VF_ID
+#ifdef CONFIG_PCI_IOV
+/*
+ * Below function needs to access pci_sriov offset and stride. Since
+ * pci_sriov structure is defined in drivers/pci/pci.h which can not
+ * be included as linux kernel header file, the structure definition
+ * is not globally visible.
+ * As a result, one copy of structure definition is added. Since the
+ * definition is a copy, you need to make sure the kernel you want
+ * to backport must have exactly the same pci_sriov definition as the
+ * copy, otherwise you'll access wrong field offset and value.
+ */
+
+/* Single Root I/O Virtualization */
+struct pci_sriov {
+	int             pos;            /* Capability position */
+	int             nres;           /* Number of resources */
+	u32             cap;            /* SR-IOV Capabilities */
+	u16             ctrl;           /* SR-IOV Control */
+	u16             total_VFs;      /* Total VFs associated with the PF */
+	u16             initial_VFs;    /* Initial VFs associated with the PF */
+	u16             num_VFs;        /* Number of VFs available */
+	u16             offset;         /* First VF Routing ID offset */
+	u16             stride;         /* Following VF stride */
+	u16             vf_device;      /* VF device ID */
+	u32             pgsz;           /* Page size for BAR alignment */
+	u8              link;           /* Function Dependency Link */
+	u8              max_VF_buses;   /* Max buses consumed by VFs */
+	u16             driver_max_VFs; /* Max num VFs driver supports */
+	struct pci_dev  *dev;           /* Lowest numbered PF */
+	struct pci_dev  *self;          /* This PF */
+	u32             cfg_size;       /* VF config space size */
+	u32             class;          /* VF device */
+	u8              hdr_type;       /* VF header type */
+	u16             subsystem_vendor; /* VF subsystem vendor */
+	u16             subsystem_device; /* VF subsystem device */
+	resource_size_t barsz[PCI_SRIOV_NUM_BARS];      /* VF BAR size */
+	bool            drivers_autoprobe; /* Auto probing of VFs by driver */
+};
+
+int _kc_pci_iov_vf_id(struct pci_dev *dev)
+{
+	struct pci_dev *pf;
+
+	if (!dev->is_virtfn)
+		return -EINVAL;
+
+	pf = pci_physfn(dev);
+	return (((dev->bus->number << 8) + dev->devfn) -
+		((pf->bus->number << 8) + pf->devfn + pf->sriov->offset)) /
+	       pf->sriov->stride;
+}
+#endif /* CONFIG_PCI_IOV */
+#endif /* NEED_PCI_IOV_VF_ID */
+
+#ifdef NEED_MUL_U64_U64_DIV_U64
+u64 mul_u64_u64_div_u64(u64 a, u64 b, u64 c)
+{
+	u64 res = 0, div, rem;
+	int shift;
+
+	/* can a * b overflow ? */
+	if (ilog2(a) + ilog2(b) > 62) {
+		/*
+		 * (b * a) / c is equal to
+		 *
+		 *      (b / c) * a +
+		 *      (b % c) * a / c
+		 *
+		 * if nothing overflows. Can the 1st multiplication
+		 * overflow? Yes, but we do not care: this can only
+		 * happen if the end result can't fit in u64 anyway.
+		 *
+		 * So the code below does
+		 *
+		 *      res = (b / c) * a;
+		 *      b = b % c;
+		 */
+		div = div64_u64_rem(b, c, &rem);
+		res = div * a;
+		b = rem;
+
+		shift = ilog2(a) + ilog2(b) - 62;
+		if (shift > 0) {
+			/* drop precision */
+			b >>= shift;
+			c >>= shift;
+			if (!c)
+				return res;
+		}
+	}
+
+	return res + div64_u64(a * b, c);
+}
+#endif /* NEED_MUL_U64_U64_DIV_U64 */
+
+#ifdef NEED_ETHTOOL_SPRINTF
+void ethtool_sprintf(u8 **data, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vsnprintf(*data, ETH_GSTRING_LEN, fmt, args);
+	va_end(args);
+
+	*data += ETH_GSTRING_LEN;
+}
+#endif /* NEED_ETHTOOL_SPRINTF */
+
+#ifdef NEED_SYSFS_EMIT
+int sysfs_emit(char *buf, const char *fmt, ...)
+{
+	va_list args;
+	int len;
+
+	if (WARN(!buf || offset_in_page(buf),
+		 "invalid %s: buf:%p\n", __func__, buf))
+		return 0;
+
+	va_start(args, fmt);
+	len = vscnprintf(buf, PAGE_SIZE, fmt, args);
+	va_end(args);
+
+	return len;
+}
+#endif /* NEED_SYSFS_EMIT */
+
+#ifndef HAVE_ETHTOOL_KEEE
+void ethtool_convert_legacy_u32_to_link_mode(unsigned long *dst,
+					     u32 legacy_u32)
+{
+	bitmap_zero(dst, __ETHTOOL_LINK_MODE_MASK_NBITS);
+	dst[0] = legacy_u32;
+}
+
+bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
+					     const unsigned long *src)
+{
+	*legacy_u32 = src[0];
+	return find_next_bit(src, __ETHTOOL_LINK_MODE_MASK_NBITS, 32) ==
+		__ETHTOOL_LINK_MODE_MASK_NBITS;
+}
+
+void eee_to_keee(struct ethtool_keee *keee,
+		 const struct ethtool_eee *eee)
+{
+	memset(keee, 0, sizeof(*keee));
+
+	keee->eee_enabled = eee->eee_enabled;
+	keee->tx_lpi_enabled = eee->tx_lpi_enabled;
+	keee->tx_lpi_timer = eee->tx_lpi_timer;
+
+	ethtool_convert_legacy_u32_to_link_mode(keee->supported,
+						eee->supported);
+	ethtool_convert_legacy_u32_to_link_mode(keee->advertised,
+						eee->advertised);
+	ethtool_convert_legacy_u32_to_link_mode(keee->lp_advertised,
+						eee->lp_advertised);
+}
+
+bool ethtool_eee_use_linkmodes(const struct ethtool_keee *eee)
+{
+#if (RHEL_RELEASE_CODE && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(8,0)))
+	return !linkmode_empty(eee->supported);
+#else
+	return false;
+#endif /* RH7.9 */
+}
+
+void keee_to_eee(struct ethtool_eee *eee,
+		 const struct ethtool_keee *keee)
+{
+	bool overflow;
+
+	memset(eee, 0, sizeof(*eee));
+
+	eee->eee_active = keee->eee_active;
+	eee->eee_enabled = keee->eee_enabled;
+	eee->tx_lpi_enabled = keee->tx_lpi_enabled;
+	eee->tx_lpi_timer = keee->tx_lpi_timer;
+
+	overflow = !ethtool_convert_link_mode_to_legacy_u32(&eee->supported,
+							    keee->supported);
+	ethtool_convert_link_mode_to_legacy_u32(&eee->advertised,
+						keee->advertised);
+	ethtool_convert_link_mode_to_legacy_u32(&eee->lp_advertised,
+						keee->lp_advertised);
+	if (overflow)
+		pr_warn("Ethtool ioctl interface doesn't support passing EEE linkmodes beyond bit 32\n");
+}
+#endif /* !HAVE_ETHTOOL_KEEE */

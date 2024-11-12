@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 /* this lets the macros that return timespec64 or structs compile cleanly with
  * W=2
@@ -68,7 +68,7 @@ static struct kobj_attribute ptp_pins_attribute = __ATTR(pins, 0660,
 
 enum i40e_ptp_gpio_pin_state {
 	end = -2,
-	invalid,
+	empty,
 	off,
 	in_A,
 	in_B,
@@ -349,49 +349,59 @@ static void i40e_ptp_convert_to_hwtstamp(struct skb_shared_hwtstamps *hwtstamps,
 }
 
 /**
- * i40e_ptp_adjfreq - Adjust the PHC frequency
+ * i40e_ptp_adjfine - Adjust the PHC frequency
  * @ptp: The PTP clock structure
- * @ppb: Parts per billion adjustment from the base
+ * @scaled_ppm: Scaled parts per million adjustment from the base
  *
- * Adjust the frequency of the PHC by the indicated parts per billion from the
- * base frequency.
+ * Adjust the frequency of the PHC by the indicated delta from the base
+ * frequency.
+ *
+ * Scaled parts per million is ppm with a 16 bit binary fractional field.
  **/
-static int i40e_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
+static int i40e_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 {
 	struct i40e_pf *pf = container_of(ptp, struct i40e_pf, ptp_caps);
 	struct i40e_hw *hw = &pf->hw;
-	u64 adj, freq, diff;
-	int neg_adj = 0;
+	u64 adj, base_adj;
 
-	if (ppb < 0) {
-		neg_adj = 1;
-		ppb = -ppb;
-	}
-
-	freq = I40E_PTP_40GB_INCVAL;
-	freq *= ppb;
-	diff = div_u64(freq, 1000000000ULL);
-
-	if (neg_adj)
-		adj = I40E_PTP_40GB_INCVAL - diff;
-	else
-		adj = I40E_PTP_40GB_INCVAL + diff;
-
-	/* At some link speeds, the base incval is so large that directly
-	 * multiplying by ppb would result in arithmetic overflow even when
-	 * using a u64. Avoid this by instead calculating the new incval
-	 * always in terms of the 40GbE clock rate and then multiplying by the
-	 * link speed factor afterwards. This does result in slightly lower
-	 * precision at lower link speeds, but it is fairly minor.
-	 */
 	smp_mb(); /* Force any pending update before accessing. */
-	adj *= READ_ONCE(pf->ptp_adj_mult);
+	base_adj = I40E_PTP_40GB_INCVAL * READ_ONCE(pf->ptp_adj_mult);
+
+	adj = adjust_by_scaled_ppm(base_adj, scaled_ppm);
 
 	wr32(hw, I40E_PRTTSYN_INC_L, (u32)adj);
 	wr32(hw, I40E_PRTTSYN_INC_H, (u32)(adj >> 32));
 
 	return 0;
 }
+
+#ifndef HAVE_PTP_CLOCK_INFO_ADJFINE
+/*
+ * i40e_ptp_adjfreq - Adjust the PHC frequency
+ * @ptp: The PTP clock structure
+ * @ppb: Parts per billion adjustment from the base
+ *
+ * Adjust the frequency of the PHC by the indicated parts per billion from the
+ * base frequency.
+ */
+static int i40e_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
+{
+	long scaled_ppm;
+
+	/*
+	 * We want to calculate
+	 *
+	 *    scaled_ppm = ppb * 2^16 / 1000
+	 *
+	 * which simplifies to
+	 *
+	 *    scaled_ppm = ppb * 2^13 / 125
+	 */
+
+	scaled_ppm = ((long)ppb << 13) / 125;
+	return i40e_ptp_adjfine(ptp, scaled_ppm);
+}
+#endif /* HAVE_PTP_CLOCK_INFO_ADJFINE */
 
 /**
  * i40e_ptp_set_1pps_signal_hw - configure 1PPS PTP signal for pins
@@ -938,7 +948,6 @@ static enum i40e_aq_link_speed i40e_ptp_get_link_speed_hw(struct i40e_pf *pf)
 		prtmac_linksta = (rd32(hw, I40E_PRTMAC_LINKSTA(0))
 			& I40E_PRTMAC_LINKSTA_MAC_LINK_SPEED_MASK)
 			>> I40E_PRTMAC_LINKSTA_MAC_LINK_SPEED_SHIFT;
-
 		if (prtmac_linksta == I40E_PRT_MAC_LINK_SPEED_40GB) {
 			link_speed = I40E_LINK_SPEED_40GB;
 		} else {
@@ -1205,11 +1214,19 @@ static int i40e_ptp_set_pins(struct i40e_pf *pf,
 	else if (pin_caps == CAN_DO_PINS)
 		return 0;
 
-	if (pins->sdp3_2 == invalid)
+	if ((pins->sdp3_2 < empty || pins->sdp3_2 > out_B) ||
+	    (pins->sdp3_3 < empty || pins->sdp3_3 > out_B) ||
+	    (pins->gpio_4 < empty || pins->gpio_4 > out_B)) {
+		dev_warn(&pf->pdev->dev,
+			 "The provided PTP configuration set contains meaningless values that may potentially pose a safety threat.\n");
+		return -EPERM;
+	}
+
+	if (pins->sdp3_2 == empty)
 		pins->sdp3_2 = pf->ptp_pins->sdp3_2;
-	if (pins->sdp3_3 == invalid)
+	if (pins->sdp3_3 == empty)
 		pins->sdp3_3 = pf->ptp_pins->sdp3_3;
-	if (pins->gpio_4 == invalid)
+	if (pins->gpio_4 == empty)
 		pins->gpio_4 = pf->ptp_pins->gpio_4;
 	while (i40e_ptp_pin_led_allowed_states[i].sdp3_2 != end) {
 		if (pins->sdp3_2 == i40e_ptp_pin_led_allowed_states[i].sdp3_2 &&
@@ -1279,7 +1296,7 @@ int i40e_ptp_alloc_pins(struct i40e_pf *pf)
 	if (!i40e_is_ptp_pin_dev(&pf->hw))
 		return 0;
 
-	pf->ptp_pins =
+	pf->ptp_pins = 
 		kzalloc(sizeof(struct i40e_ptp_pins_settings), GFP_KERNEL);
 
 	if (!pf->ptp_pins) {
@@ -1554,11 +1571,15 @@ static long i40e_ptp_create_clock(struct i40e_pf *pf)
 	if (!IS_ERR_OR_NULL(pf->ptp_clock))
 		return 0;
 
-	strlcpy(pf->ptp_caps.name, i40e_driver_name,
+	strscpy(pf->ptp_caps.name, i40e_driver_name,
 		sizeof(pf->ptp_caps.name) - 1);
 	pf->ptp_caps.owner = THIS_MODULE;
 	pf->ptp_caps.max_adj = 999999999;
+#ifdef HAVE_PTP_CLOCK_INFO_ADJFINE
+	pf->ptp_caps.adjfine = i40e_ptp_adjfine;
+#else
 	pf->ptp_caps.adjfreq = i40e_ptp_adjfreq;
+#endif
 	pf->ptp_caps.adjtime = i40e_ptp_adjtime;
 #ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
 	pf->ptp_caps.gettime64 = i40e_ptp_gettime;
@@ -1860,6 +1881,7 @@ void i40e_ptp_init(struct i40e_pf *pf)
  **/
 void i40e_ptp_stop(struct i40e_pf *pf)
 {
+	struct i40e_vsi *main_vsi = i40e_pf_get_main_vsi(pf);
 	struct i40e_hw *hw = &pf->hw;
 	u32 regval;
 
@@ -1879,7 +1901,7 @@ void i40e_ptp_stop(struct i40e_pf *pf)
 		ptp_clock_unregister(pf->ptp_clock);
 		pf->ptp_clock = NULL;
 		dev_info(&pf->pdev->dev, "removed PHC from %s.\n",
-			 pf->vsi[pf->lan_vsi]->netdev->name);
+			 main_vsi->netdev->name);
 	}
 
 	if (i40e_is_ptp_pin_dev(&pf->hw)) {

@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-2.0
-# Copyright(c) 2013 - 2022 Intel Corporation.
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2013-2024 Intel Corporation
 
 # updates for the system pci.ids file
 #
@@ -115,8 +115,11 @@
 		8086 0007  Ethernet Network Adapter OCP XXV710-1
 		8086 0008  Ethernet Network Adapter OCP XXV710-1
 		8086 0009  Ethernet 25G 2P XXV710 Adapter
+		8086 000c  Ethernet Network Adapter XXV710-DA2 for OCP 3.0
+		8086 000d  Ethernet 25G 2P XXV710 OCP
 		8086 4001  Ethernet Network Adapter XXV710-2
 	15ff  Ethernet Controller X710 for 10GBASE-T
+		108e 7b1f  Oracle Quad Port 10GBase-T Adapter - CP
 		1137 02c1  Ethernet Network Adapter X710-T2L
 		8086 0000  Ethernet Network Adapter X710-TL
 		8086 0001  Ethernet Network Adapter X710-T4L
@@ -131,6 +134,7 @@
 		8086 000a  Ethernet Network Adapter X710-T4L for OCP 3.0
 		8086 000b  Ethernet Network Adapter X710-T2L for OCP 3.0
 		8086 000c  Ethernet Network Adapter X710-T2L for OCP 3.0
+		8086 000d  Ethernet 10G 2P X710-T2L-t OCP
 		8086 000f  Ethernet Network Adapter X710-T2L for OCP 3.0
 		8086 4009  Ethernet Network Adapter X710-T2L
 		8086 4012  Ethernet Network Adapter X710-T4L for OCP 3.0

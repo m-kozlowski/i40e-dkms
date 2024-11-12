@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifndef _I40E_TXRX_H_
 #define _I40E_TXRX_H_
@@ -117,8 +117,10 @@ enum i40e_dyn_idx_t {
 #define I40E_PACKET_HDR_PAD (ETH_HLEN + ETH_FCS_LEN + (VLAN_HLEN * 2))
 #ifdef I40E_32BYTE_RX
 #define i40e_rx_desc i40e_32byte_rx_desc
+#define i40e_rx_wb_qw0 i40e_32b_rx_wb_wq0
 #else
 #define i40e_rx_desc i40e_16byte_rx_desc
+#define i40e_rx_wb_qw0 i40e_16b_rx_wb_qw0
 #endif
 
 #ifdef HAVE_STRUCT_DMA_ATTRS
@@ -356,6 +358,7 @@ struct i40e_tx_queue_stats {
 	u64 tx_done_old;
 	u64 tx_linearize;
 	u64 tx_force_wb;
+	u64 tx_stopped;
 	int prev_pkt_ctr;
 };
 
@@ -463,9 +466,11 @@ struct i40e_ring {
 					 */
 
 	struct i40e_channel *ch;
+#ifdef HAVE_XDP_SUPPORT
 #ifdef HAVE_XDP_BUFF_RXQ
 	struct xdp_rxq_info xdp_rxq;
-#endif
+#endif /* HAVE_XDP_BUFF_RXQ */
+#endif /* HAVE_XDP_SUPPORT */
 
 #ifdef HAVE_AF_XDP_ZC_SUPPORT
 #ifdef HAVE_NETDEV_BPF_XSK_POOL
@@ -575,7 +580,7 @@ void i40e_free_rx_resources(struct i40e_ring *rx_ring);
 int i40e_napi_poll(struct napi_struct *napi, int budget);
 void i40e_force_wb(struct i40e_vsi *vsi, struct i40e_q_vector *q_vector);
 u32 i40e_get_tx_pending(struct i40e_ring *ring, bool in_sw);
-void i40e_detect_recover_hung(struct i40e_vsi *vsi);
+void i40e_detect_recover_hung(struct i40e_pf *pf);
 int __i40e_maybe_stop_tx(struct i40e_ring *tx_ring, int size);
 bool __i40e_chk_linearize(struct sk_buff *skb);
 #ifdef HAVE_XDP_FRAME_STRUCT

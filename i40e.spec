@@ -1,10 +1,10 @@
 Name: i40e
 Summary: Intel(R) 40-10 Gigabit Ethernet Connection Network Driver
-Version: 2.19.3
+Version: 2.26.8
 Release: 1
 Source: %{name}-%{version}.tar.gz
 Vendor: Intel Corporation
-License: GPL-2.0
+License: GPL-2.0-only
 ExclusiveOS: linux
 Group: System Environment/Kernel
 Provides: %{name}
@@ -18,18 +18,38 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 %define pciids    %find %{_pciids}
 %define pcitable  %find %{_pcitable}
 Requires: kernel, findutils, gawk, bash
-%define need_aux %(rpm -q --whatprovides /lib/modules/`uname -r`/build/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2)
-%if (%need_aux == 2)
-Requires: auxiliary
+
+%global __strip /bin/true
+
+%if 0%{?BUILD_KERNEL:1}
+%define kernel_ver %{BUILD_KERNEL}
+%define check_aux_args_kernel -b %{BUILD_KERNEL} 
+%else
+%define kernel_ver %(uname -r)
 %endif
 
-# Check for existence of %kernel_module_package_buildreqs ...
+%if 0%{?KSRC:1}
+%define check_aux_args_ksrc -k %{KSRC}
+%endif
+
+%define check_aux_args %check_aux_args_kernel %check_aux_args_ksrc
+
+%define need_aux_rpm %( [ -L /lib/modules/%kernel_ver/source ] && (rpm -q --whatprovides /lib/modules/%kernel_ver/source/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2) || (rpm -q --whatprovides /lib/modules/%kernel_ver/build/include/linux/auxiliary_bus.h > /dev/null 2>&1 && echo 0 || echo 2) )
+
+%if (%need_aux_rpm == 2)
+Requires: intel_auxiliary
+%endif
+
+# Check for existence of variable kernel_module_package_buildreqs ...
 %if 0%{?!kernel_module_package_buildreqs:1}
 # ... and provide a suitable definition if it is not defined
 %define kernel_module_package_buildreqs kernel-devel
 %endif
 
-BuildRequires: %kernel_module_package_buildreqs
+%define kernel_module_package_buildreqs_fixed %(/bin/bash -fc 'if [[ %{kernel_ver} == *uek* ]]; 
+	then echo %kernel_module_package_buildreqs | sed 's/kernel-devel/kernel-uek-devel/g' ; else echo %kernel_module_package_buildreqs ; fi')
+
+BuildRequires: %kernel_module_package_buildreqs_fixed
 
 %description
 This package contains the Intel(R) 40-10 Gigabit Ethernet Connection Network Driver.
@@ -42,18 +62,44 @@ make -C src clean
 make -C src
 
 %install
-make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install mandocs_install
+make -C src INSTALL_MOD_PATH=%{buildroot} MANDIR=%{_mandir} modules_install_no_aux mandocs_install
 # Remove modules files that we do not want to include
 find %{buildroot}/lib/modules/ -name 'modules.*' -exec rm -f {} \;
 cd %{buildroot}
 find lib -name "i40e.ko" -printf "/%p\n" \
 	>%{_builddir}/%{name}-%{version}/file.list
-find lib -name "auxiliary.ko" -printf "/%p\n" \
+%if (%need_aux_rpm == 2)
+make -C %{_builddir}/%{name}-%{version}/src INSTALL_MOD_PATH=%{buildroot} auxiliary_install
+
+find lib -path "*extern-symvers/intel_auxiliary.symvers" -printf "/%p\n" \
 	>%{_builddir}/%{name}-%{version}/aux.list
-find lib -path "*extern-symvers/auxiliary.symvers" -printf "/%p\n" \
-	>>%{_builddir}/%{name}-%{version}/aux.list
 find * -name "auxiliary_bus.h" -printf "/%p\n" \
 	>>%{_builddir}/%{name}-%{version}/aux.list
+find * -name "auxiliary_compat.h" -printf "/%p\n" \
+	>>%{_builddir}/%{name}-%{version}/aux.list
+find * -name "kcompat_generated_defs.h" -printf "/%p\n" \
+	>>%{_builddir}/%{name}-%{version}/aux.list
+find lib -name "intel_auxiliary.ko" -printf "/%p\n" \
+	>>%{_builddir}/%{name}-%{version}/aux.list
+%else
+find lib -name "intel_auxiliary.ko" -type f -delete
+%endif
+
+export _ksrc=%{_usrsrc}/kernels/%{kernel_ver}
+cd %{buildroot}
+# Sign the modules(s)
+%if %{?_with_modsign:1}%{!?_with_modsign:0}
+%define __strip /bin/true
+%{!?privkey: %define privkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.priv}
+%{!?pubkey: %define pubkey %{_sysconfdir}/pki/SECURE-BOOT-KEY.der}
+%{!?_signfile: %define _signfile ${_ksrc}/scripts/sign-file}
+for module in `find . -type f -name *.ko`;
+do
+strip --strip-debug ${module}
+$(KSRC=${_ksrc} %{_signfile} sha512 %{privkey} %{pubkey} ${module} > /dev/null 2>&1)
+done
+%endif
+
 
 
 %clean
@@ -94,7 +140,7 @@ bash -s %{pciids} \
 	%{name} \
 <<"END"
 #! /bin/bash
-# Copyright (C) 2017 Intel Corporation
+# Copyright (C) 2017 - 2023 Intel Corporation
 # For licensing information, see the file 'LICENSE' in the root folder
 # $1 = system pci.ids file to update
 # $2 = system pcitable file to update
@@ -347,6 +393,11 @@ fi
 
 uname -r | grep BOOT || /sbin/depmod -a > /dev/null 2>&1 || true
 
+if [ -x "/usr/sbin/weak-modules" ]; then
+    modules=( $(cat $LD/file.list | grep '\.ko$' | xargs realpath) )
+    printf '%s\n' "${modules[@]}" | /usr/sbin/weak-modules --no-initramfs --add-modules
+fi
+
 if which dracut >/dev/null 2>&1; then
 	echo "Updating initramfs with dracut..."
 	if dracut --force ; then
@@ -372,10 +423,24 @@ else
 fi
 
 %preun
+LD="%{_docdir}/%{name}";
+if [ -d %{_docdir}/%{name}-%{version} ]; then
+	LD="%{_docdir}/%{name}-%{version}";
+fi
+
+# save tmp list of installed kernel modules for weak-modules
+cat $LD/file.list | grep '\.ko$' | xargs realpath > /var/run/rpm-%{name}-modules.list
+
 rm -rf /usr/local/share/%{name}
 
 %postun
 uname -r | grep BOOT || /sbin/depmod -a > /dev/null 2>&1 || true
+
+if [ -x "/usr/sbin/weak-modules" ]; then
+    modules=( $(cat /var/run/rpm-%{name}-modules.list) )
+    printf '%s\n' "${modules[@]}" | /usr/sbin/weak-modules --no-initramfs --remove-modules
+fi
+rm /var/run/rpm-%{name}-modules.list
 
 if which dracut >/dev/null 2>&1; then
 	echo "Updating initramfs with dracut..."
@@ -401,15 +466,15 @@ else
 	exit -1
 fi
 
-%package -n auxiliary
+%if (%need_aux_rpm == 2)
+%package -n intel_auxiliary
 Summary: Auxiliary bus driver (backport)
-Version: 1.0.0
+Version: 1.0.2
 
-%description -n auxiliary
-The Auxiliary bus driver (auxiliary.ko), backported from upstream, for use by kernels that don't have auxiliary bus.
+%description -n intel_auxiliary
+The Auxiliary bus driver (intel_auxiliary.ko), backported from upstream, for use by kernels that don't have auxiliary bus.
 
-# %if to hide this whole section, causes RPM to not build the subproject at all
-%if (%need_aux == 2)
-%files -n auxiliary -f aux.list
+%files -n intel_auxiliary -f aux.list
 %doc aux.list
 %endif
+

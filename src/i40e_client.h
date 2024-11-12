@@ -1,11 +1,14 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifndef _I40E_CLIENT_H_
 #define _I40E_CLIENT_H_
 
+#ifdef USE_INTEL_AUX_BUS
+#include "linux/auxiliary_bus.h"
+#else
 #include <linux/auxiliary_bus.h>
-
+#endif /* USE_INTEL_AUX_BUS */
 
 #define I40E_PEER_RDMA_NAME    "i40e_rdma"
 #define I40E_PEER_RDMA_ID      PLATFORM_DEVID_AUTO

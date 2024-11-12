@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright(c) 2013 - 2022 Intel Corporation. */
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2024 Intel Corporation */
 
 #ifndef _AUXILIARY_BUS_H_
 #define _AUXILIARY_BUS_H_
@@ -11,14 +11,31 @@
 #include <linux/pm_qos.h>
 #include <linux/device.h>
 #include <linux/mod_devicetable.h>
+#include "auxiliary_compat.h"
 
+#ifndef HAVE_AUXILIARY_DEVICE_ID
+/* For some kernel, auxiliary is not mature enough so that part code is
+ * included, but no driver uses it. HAVE_AUXILIARY_DEVICE_ID will be
+ * generated only when CONFIG_AUXILIARY_BUS is not defined. If
+ * HAVE_AUXILIARY_DEVICE_ID is defined, it means struct
+ * auxiliary_device_id and AUXILIARY_NAME_SIZE, AXUILIARY_MODULE_PREFIX
+ * in <linux/mod_devicetable.h> is used. Otherwise need definition here.
+ */
 #define AUXILIARY_NAME_SIZE 32
-#define AUXILIARY_MODULE_PREFIX "auxiliary:"
-
+#define AUXILIARY_MODULE_PREFIX "intel_auxiliary:"
 struct auxiliary_device_id {
 	char name[AUXILIARY_NAME_SIZE];
 	kernel_ulong_t driver_data;
 };
+#endif
+
+#define AUX_PREFIX(func) intel_ ## func
+
+#define auxiliary_device_init AUX_PREFIX(auxiliary_device_init)
+#define __auxiliary_device_add AUX_PREFIX(__auxiliary_device_add)
+#define auxiliary_find_device AUX_PREFIX(auxiliary_find_device)
+#define __auxiliary_driver_register AUX_PREFIX(__auxiliary_driver_register)
+#define auxiliary_driver_unregister AUX_PREFIX(auxiliary_driver_unregister)
 
 struct auxiliary_device {
 	struct device dev;
