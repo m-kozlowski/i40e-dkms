@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
-/* Copyright (C) 2013-2024 Intel Corporation */
+ /* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2013-2025 Intel Corporation */
 
 /* ethtool support for i40e */
 
@@ -2791,7 +2791,6 @@ i40e_get_pfc_stats(struct i40e_pf *pf, unsigned int i)
 {
 #define I40E_GET_PFC_STAT(stat, priority) \
 	.stat = pf->stats.stat[priority]
-
 	struct i40e_pfc_stats pfc = {
 		I40E_GET_PFC_STAT(priority_xon_rx, i),
 		I40E_GET_PFC_STAT(priority_xoff_rx, i),
@@ -3079,8 +3078,14 @@ static void i40e_get_strings(struct net_device *netdev, u32 stringset,
 }
 
 #ifdef HAVE_ETHTOOL_GET_TS_INFO
+
+#ifdef HAVE_ETHTOOL_KERNEL_TS_INFO
+static int i40e_get_ts_info(struct net_device *dev,
+			    struct kernel_ethtool_ts_info *info)
+#else
 static int i40e_get_ts_info(struct net_device *dev,
 			    struct ethtool_ts_info *info)
+#endif /* HAVE_ETHTOOL_KERNEL_TS_INFO */
 {
 #ifdef HAVE_PTP_1588_CLOCK
 	struct i40e_pf *pf = i40e_netdev_to_pf(dev);
