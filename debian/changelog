@@ -1,3 +1,9 @@
+i40e-dkms (2.28.5-1) UNRELEASED; urgency=medium
+
+  * New upstream release 2.28.5
+
+ -- Michal Kozlowski <deb@empeka.pl>  Sun, 18 May 2025 22:04:51 +0200
+
 i40e-dkms (2.19.3+nmu1) unstable; urgency=medium
 
   * New upstream release 2.26.8
